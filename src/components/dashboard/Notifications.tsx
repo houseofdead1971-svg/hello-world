@@ -35,7 +35,7 @@ export const Notifications = ({ userId }: { userId: string }) => {
 
     const fetchNotifications = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from("notifications")
           .select("*")
           .eq("user_id", userId)
@@ -43,7 +43,7 @@ export const Notifications = ({ userId }: { userId: string }) => {
           .limit(50);
 
         if (error) throw error;
-        if (mounted) setNotifications((data as NotificationItem[]) || []);
+        if (mounted) setNotifications((data as any[]) || []);
       } catch (err) {
         console.error("Error loading notifications:", err);
       } finally {
@@ -123,7 +123,7 @@ export const Notifications = ({ userId }: { userId: string }) => {
 
   const markAsRead = async (id: string, link?: string | null) => {
     try {
-      const { error } = await supabase.from("notifications").update({ read: true }).eq("id", id);
+      const { error } = await (supabase as any).from("notifications").update({ read: true }).eq("id", id);
       if (error) throw error;
       setNotifications((prev) => prev.map((p) => (p.id === id ? { ...p, read: true } : p)));
       
@@ -141,7 +141,7 @@ export const Notifications = ({ userId }: { userId: string }) => {
 
   const markAllRead = async () => {
     try {
-      const { error } = await supabase.from("notifications").update({ read: true }).eq("user_id", userId).eq("read", false);
+      const { error } = await (supabase as any).from("notifications").update({ read: true }).eq("user_id", userId).eq("read", false);
       if (error) throw error;
       setNotifications((prev) => prev.map((p) => ({ ...p, read: true })));
       toast.success("All notifications marked read");
