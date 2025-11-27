@@ -561,17 +561,18 @@ const DoctorDashboard = () => {
             <div className="flex items-center gap-3">
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                 <SheetTrigger asChild>
-                    <button 
-                      type="button"
-                      onClick={() => setMobileMenuOpen(true)}
-                      className="lg:hidden z-50 p-2.5 hover:bg-accent/20 active:bg-accent/30 rounded-lg transition-all duration-300 relative group" 
-                      aria-label="Toggle menu"
-                    >
-                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-primary/10 to-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                      <Menu className="h-6 w-6 relative z-10 transition-transform duration-300 group-hover:rotate-180" />
-                    </button>
-                  </SheetTrigger>
-                <SheetContent side="left" className="w-3/4 p-0 overflow-y-auto">
+                  <button 
+                    type="button"
+                    className="lg:hidden z-50 p-2.5 hover:bg-accent/20 active:bg-accent/30 rounded-lg transition-all duration-300 relative group cursor-pointer" 
+                    aria-label="Toggle menu"
+                    aria-expanded={mobileMenuOpen}
+                    aria-controls="mobile-nav"
+                  >
+                    <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-primary/10 to-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                    <Menu className="h-6 w-6 relative z-10 transition-transform duration-300 group-hover:rotate-180" />
+                  </button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-3/4 p-0 overflow-y-auto" id="mobile-nav">
                   <SheetHeader className="p-4 border-b sticky top-0 bg-background z-10 flex flex-row items-center justify-between">
                     <SheetTitle>Navigation</SheetTitle>
                     <SheetClose asChild>

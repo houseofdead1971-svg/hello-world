@@ -194,11 +194,17 @@ const Dashboard = () => {
             <div className="flex items-center gap-3">
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="md:hidden">
+                  <button 
+                    type="button"
+                    className="md:hidden p-2 hover:bg-accent/20 rounded-lg transition-all duration-300 relative cursor-pointer z-50" 
+                    aria-label="Toggle menu"
+                    aria-expanded={mobileMenuOpen}
+                    aria-controls="mobile-nav"
+                  >
                     <Menu className="h-6 w-6" />
-                  </Button>
+                  </button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-3/4 p-0">
+                <SheetContent side="left" className="w-3/4 p-0" id="mobile-nav">
                   <SheetHeader className="p-4 border-b">
                     <SheetTitle>Navigation</SheetTitle>
                   </SheetHeader>
