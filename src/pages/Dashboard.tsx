@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Menu } from "lucide-react";
+import { Activity, Menu, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { User, Session } from "@supabase/supabase-js";
@@ -13,7 +13,7 @@ import { AvailableDoctors } from "@/components/dashboard/AvailableDoctors";
 import { PatientAppointments } from "@/components/dashboard/PatientAppointments";
 import { PatientAppointmentHistory } from "@/components/dashboard/PatientAppointmentHistory";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 
 const Dashboard = () => {
@@ -194,13 +194,24 @@ const Dashboard = () => {
             <div className="flex items-center gap-3">
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="md:hidden">
-                    <Menu className="h-6 w-6" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="w-3/4 p-0">
-                  <SheetHeader className="p-4 border-b">
+                    <button 
+                      type="button"
+                      onClick={() => setMobileMenuOpen(true)}
+                      className="md:hidden z-50 p-2.5 hover:bg-accent/20 active:bg-accent/30 rounded-lg transition-all duration-300 relative group" 
+                      aria-label="Toggle menu"
+                    >
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-primary/10 to-accent/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <Menu className="h-6 w-6 relative z-10 transition-transform duration-300 group-hover:rotate-180" />
+                    </button>
+                  </SheetTrigger>
+                <SheetContent side="left" className="w-3/4 p-0 overflow-y-auto">
+                  <SheetHeader className="p-4 border-b sticky top-0 bg-background z-10 flex flex-row items-center justify-between">
                     <SheetTitle>Navigation</SheetTitle>
+                    <SheetClose asChild>
+                      <button className="h-8 w-8 rounded-lg hover:bg-destructive/10 flex items-center justify-center transition-colors">
+                        <X className="h-5 w-5 text-destructive" />
+                      </button>
+                    </SheetClose>
                   </SheetHeader>
                   <nav className="flex flex-col gap-4 p-4">
                     {navLinks.map((link) => (
