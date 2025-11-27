@@ -1,0 +1,223 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 210 15% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 15% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 15% 20%;
+
+    /* Medical teal - trust, healthcare, professionalism */
+    --primary: 184 65% 45%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 184 60% 55%;
+    --primary-dark: 184 70% 35%;
+
+    /* Soft backgrounds */
+    --secondary: 200 20% 96%;
+    --secondary-foreground: 210 15% 20%;
+
+    --muted: 200 15% 94%;
+    --muted-foreground: 210 12% 50%;
+
+    /* Blue accent - complementary to primary teal */
+    --accent: 200 70% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 200 20% 88%;
+    --input: 200 20% 92%;
+    --ring: 184 65% 45%;
+
+    --radius: 0.625rem;
+
+    /* Healthcare gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(184 65% 45%), hsl(200 70% 55%));
+    --gradient-hero: linear-gradient(135deg, hsl(184 70% 40%), hsl(200 75% 50%), hsl(184 65% 55%));
+    --gradient-subtle: linear-gradient(180deg, hsl(200 25% 98%), hsl(184 20% 96%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(200 20% 98%));
+    --gradient-accent: linear-gradient(135deg, hsl(200 70% 50%), hsl(184 65% 55%));
+
+    /* Shadows */
+    --shadow-soft: 0 2px 12px -2px hsl(184 40% 45% / 0.15);
+    --shadow-card: 0 4px 20px -4px hsl(184 50% 40% / 0.12);
+    --shadow-glow: 0 8px 32px -8px hsl(184 60% 45% / 0.25);
+    --shadow-lifted: 0 12px 48px -12px hsl(184 50% 40% / 0.2);
+
+    /* Transitions */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 25% 8%;
+    --foreground: 210 20% 98%;
+
+    --card: 220 20% 12%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 220 20% 12%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 184 70% 55%;
+    --primary-foreground: 220 25% 8%;
+    --primary-light: 184 65% 65%;
+    --primary-dark: 184 75% 45%;
+
+    --secondary: 220 18% 16%;
+    --secondary-foreground: 210 20% 98%;
+
+    --muted: 220 15% 18%;
+    --muted-foreground: 210 15% 70%;
+
+    --accent: 200 75% 55%;
+    --accent-foreground: 220 25% 8%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 18%;
+    --ring: 184 70% 55%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(184 70% 45%), hsl(200 75% 55%));
+    --gradient-hero: linear-gradient(135deg, hsl(184 75% 40%), hsl(200 80% 50%), hsl(184 70% 55%));
+    --gradient-subtle: linear-gradient(180deg, hsl(220 25% 10%), hsl(220 20% 12%));
+    --gradient-card: linear-gradient(145deg, hsl(220 20% 12%), hsl(220 18% 15%));
+    --gradient-accent: linear-gradient(135deg, hsl(200 75% 55%), hsl(184 70% 60%));
+
+    --shadow-soft: 0 2px 16px -2px hsl(0 0% 0% / 0.4);
+    --shadow-card: 0 4px 24px -4px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 8px 40px -8px hsl(184 70% 50% / 0.5);
+    --shadow-lifted: 0 12px 56px -12px hsl(0 0% 0% / 0.6);
+
+    --sidebar-background: 220 25% 10%;
+    --sidebar-foreground: 210 20% 95%;
+    --sidebar-primary: 184 70% 55%;
+    --sidebar-primary-foreground: 220 25% 8%;
+    --sidebar-accent: 220 18% 16%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 15% 20%;
+    --sidebar-ring: 184 70% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+    font-optical-sizing: auto;
+    /* Enable hardware acceleration */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Smooth scrolling with momentum on mobile */
+  html {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Optimize touch interactions for mobile */
+  * {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  /* Hardware acceleration for transforms and animations */
+  /* Hardware acceleration for specific interactive elements only */
+  button:active,
+  a:active {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+
+  /* Smooth scrolling for scroll containers */
+  [class*="overflow"],
+  [class*="scroll"] {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  /* Custom scrollbar for desktop */
+  @media (min-width: 768px) {
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: hsl(var(--muted));
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: hsl(var(--primary) / 0.5);
+      border-radius: 2px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: hsl(var(--primary) / 0.7);
+    }
+  }
+
+  /* Hide scrollbar on mobile for cleaner look */
+  @media (max-width: 767px) {
+    ::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+  }
+
+  /* Reduce motion for users who prefer it */
+  @media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Optimize video rendering */
+  video {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+}
