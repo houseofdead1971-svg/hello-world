@@ -258,9 +258,9 @@ export function PatientDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] w-[95vw] md:w-full p-4 md:p-6">
+      <DialogContent className="max-w-5xl max-h-[90vh] w-[95vw] md:w-full p-3 md:p-6">
         <DialogHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col gap-3 md:gap-0">
             <div className="flex items-center gap-3 md:gap-4 min-w-0">
               <Avatar className="h-12 w-12 md:h-16 md:w-16 flex-shrink-0">
                 <AvatarImage src={patient.avatar_url || undefined} />
@@ -270,37 +270,39 @@ export function PatientDetailsDialog({
               </Avatar>
               <DialogTitle className="text-lg md:text-2xl truncate">{patient.full_name}</DialogTitle>
             </div>
-            <div className="flex gap-2 flex-shrink-0">
+            <div className="flex flex-wrap gap-2 md:absolute md:top-6 md:right-6">
               <Button
                 onClick={handleStatusChange}
                 disabled={isChangingStatus || !onStatusChange}
                 variant={patient.status === "active" ? "outline" : "default"}
                 title={patient.status === "active" ? "Deactivate patient" : "Activate patient"}
+                size="sm"
+                className="text-xs md:text-sm"
               >
                 {patient.status === "active" ? "Deactivate" : "Activate"}
               </Button>
               <Button
                 onClick={handleDownloadPDF}
-                className="gap-2"
+                className="gap-2 text-xs md:text-sm"
+                size="sm"
                 title="Download patient clinical summary as PDF"
               >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Download PDF</span>
-                <span className="sm:hidden">PDF</span>
+                <Download className="h-3 w-3 md:h-4 md:w-4" />
+                <span className="hidden sm:inline">PDF</span>
               </Button>
               <PatientQRCode patient={patient} />
             </div>
           </div>
         </DialogHeader>
 
-        <ScrollArea className="h-[70vh] pr-2 md:pr-4">
-          <div className="space-y-4 md:space-y-6">
+        <ScrollArea className="h-[60vh] md:h-[70vh] pr-2 md:pr-4">
+          <div className="space-y-3 md:space-y-6">
             <EditPatientDetails patient={patient} onSave={onSave} />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mt-4 md:mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6 mt-3 md:mt-6">
               <Card className="p-3 md:p-4">
-                <h4 className="font-semibold mb-2 md:mb-3 text-sm md:text-base">Personal Information</h4>
-                <div className="space-y-2 text-xs md:text-sm">
+                <h4 className="font-semibold mb-2 md:mb-3 text-xs md:text-sm">Personal Information</h4>
+                <div className="space-y-1 md:space-y-2 text-xs md:text-sm">
                   <div className="flex flex-col sm:flex-row sm:justify-between gap-1 sm:gap-2">
                     <span className="text-muted-foreground">Email:</span>
                     <span className="break-all sm:text-right">{patient.email}</span>
