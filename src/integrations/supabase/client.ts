@@ -13,6 +13,17 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    onError: (err) => {
+      console.error('Supabase auth error:', err);
+      // Clear invalid session on auth errors
+      if (err.message?.includes('Refresh Token') || err.message?.includes('Invalid') || err.message?.includes('session')) {
+        console.warn('Clearing invalid session due to refresh token error');
+        localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
+      }
+    },
+    shouldThrowOnError: false,
   },
   realtime: {
     params: {
@@ -22,6 +33,36 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
   global: {
     headers: {
       'X-Client-Info': 'boundless-health-app',
+    },
+    fetch: async (url, options = {}) => {
+      // Add retry logic for network failures
+      let lastError: Error | null = null;
+      const maxRetries = 3;
+      const retryDelay = 1000; // Start with 1 second
+
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const response = await fetch(url, {
+            ...options,
+            timeout: 30000, // 30 second timeout
+          } as RequestInit);
+          return response;
+        } catch (error) {
+          lastError = error as Error;
+          
+          // Don't retry on client errors
+          if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+            if (attempt < maxRetries - 1) {
+              // Wait before retrying (exponential backoff)
+              await new Promise(resolve => setTimeout(resolve, retryDelay * Math.pow(2, attempt)));
+              continue;
+            }
+          }
+          throw error;
+        }
+      }
+
+      throw lastError || new Error('Network request failed after retries');
     },
   },
 });

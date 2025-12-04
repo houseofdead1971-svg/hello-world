@@ -103,6 +103,54 @@ export type Database = {
         }
         Relationships: []
       }
+      emergency_bookings: {
+        Row: {
+          id: string
+          patient_id: string
+          doctor_id: string
+          appointment_id: string | null
+          reason: string
+          urgency_level: string
+          status: string
+          doctor_notes: string | null
+          requested_at: string | null
+          responded_at: string | null
+          scheduled_date: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          doctor_id: string
+          appointment_id?: string | null
+          reason: string
+          urgency_level?: string
+          status?: string
+          doctor_notes?: string | null
+          requested_at?: string | null
+          responded_at?: string | null
+          scheduled_date?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          doctor_id?: string
+          appointment_id?: string | null
+          reason?: string
+          urgency_level?: string
+          status?: string
+          doctor_notes?: string | null
+          requested_at?: string | null
+          responded_at?: string | null
+          scheduled_date?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           content: string
@@ -347,6 +395,97 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      prescriptions: {
+        Row: {
+          appointment_id: string | null
+          created_at: string | null
+          doctor_id: string
+          doctor_name: string | null
+          doctor_license: string | null
+          doctor_specialization: string | null
+          emergency_booking_id: string | null
+          file_url: string | null
+          file_path: string | null
+          id: string
+          medicines: Array<{
+            medicine_name: string
+            dosage: string
+            frequency: string
+            duration: string
+            notes?: string | null
+          }> | null
+          notes: string | null
+          patient_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          appointment_id?: string | null
+          created_at?: string | null
+          doctor_id: string
+          doctor_name?: string | null
+          doctor_license?: string | null
+          doctor_specialization?: string | null
+          emergency_booking_id?: string | null
+          file_url?: string | null
+          file_path?: string | null
+          id?: string
+          medicines?: Array<{
+            medicine_name: string
+            dosage: string
+            frequency: string
+            duration: string
+            notes?: string | null
+          }> | null
+          notes?: string | null
+          patient_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          appointment_id?: string | null
+          created_at?: string | null
+          doctor_id?: string
+          doctor_name?: string | null
+          doctor_license?: string | null
+          doctor_specialization?: string | null
+          emergency_booking_id?: string | null
+          file_url?: string | null
+          file_path?: string | null
+          id?: string
+          medicines?: Array<{
+            medicine_name: string
+            dosage: string
+            frequency: string
+            duration: string
+            notes?: string | null
+          }> | null
+          notes?: string | null
+          patient_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prescriptions_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prescriptions_doctor_id_fkey"
+            columns: ["doctor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prescriptions_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {

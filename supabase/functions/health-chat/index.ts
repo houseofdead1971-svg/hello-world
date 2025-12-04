@@ -1,20 +1,24 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "content-type, authorization, x-client-info, apikey"
 };
 
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 200,
-      headers: corsHeaders,
+      headers: corsHeaders
     });
   }
 
   try {
     const { messages, conversationId, userId } = await req.json();
-    console.log("Health chat request:", { messageCount: messages.length, conversationId, userId });
+    console.log("Health chat request:", {
+      messageCount: messages.length,
+      conversationId,
+      userId
+    });
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) {
@@ -28,11 +32,22 @@ Deno.serve(async (req: Request) => {
 - Organizing health records
 - Reminders and health tips`;
 
-    const formattedMessages = [
-      { role: "user", parts: [{ text: systemPrompt }] },
-      ...messages.map((msg: any) => ({
+    const contents = [
+      {
+        role: "user",
+        parts: [
+          {
+            text: systemPrompt
+          }
+        ]
+      },
+      ...messages.map((msg) => ({
         role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }]
+        parts: [
+          {
+            text: msg.content
+          }
+        ]
       }))
     ];
 
@@ -41,15 +56,15 @@ Deno.serve(async (req: Request) => {
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          contents: formattedMessages,
+          contents: contents,
           generationConfig: {
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 1024
           },
           safetySettings: [
             {
@@ -69,7 +84,7 @@ Deno.serve(async (req: Request) => {
               threshold: "BLOCK_MEDIUM_AND_ABOVE"
             }
           ]
-        }),
+        })
       }
     );
 
@@ -79,14 +94,63 @@ Deno.serve(async (req: Request) => {
 
       if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Rate limit exceeded, please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({
+            error: "Rate limit exceeded, please try again later."
+          }),
+          {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      }
+
+      if (response.status === 400) {
+        return new Response(
+          JSON.stringify({
+            error: "Invalid request to AI service",
+            details: errorText
+          }),
+          {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        return new Response(
+          JSON.stringify({
+            error: "API authentication failed. Check your Gemini API key."
+          }),
+          {
+            status: 401,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json"
+            }
+          }
         );
       }
 
       return new Response(
-        JSON.stringify({ error: "AI service error" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          error: "AI service error",
+          status: response.status,
+          details: errorText
+        }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json"
+          }
+        }
       );
     }
 
@@ -96,14 +160,48 @@ Deno.serve(async (req: Request) => {
     console.log("AI response generated successfully");
 
     return new Response(
-      JSON.stringify({ message: assistantMessage }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        message: assistantMessage
+      }),
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      }
     );
   } catch (error) {
     console.error("Health chat error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+    // Special handling for missing API key
+    if (errorMessage.includes("GEMINI_API_KEY is not configured")) {
+      return new Response(
+        JSON.stringify({
+          error: "AI service not configured. Please contact support."
+        }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json"
+          }
+        }
+      );
+    }
+
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        error: errorMessage
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      }
     );
   }
 });

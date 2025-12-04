@@ -1,4 +1,10 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
+
+const touchFriendlyPlugin = plugin(function ({ addVariant, e }) {
+  // Add hover-capable variant that only applies on devices that support hover
+  addVariant("hover-capable", "@media (hover: hover) and (pointer: fine)");
+});
 
 export default {
   darkMode: ["class"],
@@ -98,5 +104,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [require("tailwindcss-animate"), touchFriendlyPlugin],
 } satisfies Config;

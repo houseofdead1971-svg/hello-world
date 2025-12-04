@@ -11,10 +11,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { MessageSquare, Star, Calendar } from "lucide-react";
+import { MessageSquare, Star, Calendar, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AppointmentFeedbackDialog } from "./AppointmentFeedbackDialog";
+import { PrescriptionUploadDialog } from "./PrescriptionUploadDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { hasAppointmentPassed } from "@/lib/istTimezone";
 
 interface Appointment {
   id: string;
@@ -25,6 +27,7 @@ interface Appointment {
   notes?: string;
   patient_name?: string;
   patient_email?: string;
+  is_emergency_booking?: boolean;
 }
 
 interface Feedback {
@@ -35,9 +38,29 @@ interface Feedback {
   doctor_rating?: number;
 }
 
-export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => {
+interface Prescription {
+  id: string;
+  medicines: any[];
+  notes?: string;
+  file_url?: string;
+  file_path?: string;
+  created_at: string;
+}
+
+export const DoctorAppointmentHistory = ({ 
+  doctorId, 
+  doctorName = "",
+  doctorLicense = "",
+  doctorSpecialization = ""
+}: { 
+  doctorId: string;
+  doctorName?: string;
+  doctorLicense?: string;
+  doctorSpecialization?: string;
+}) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [feedbacks, setFeedbacks] = useState<Record<string, Feedback>>({});
+  const [prescriptions, setPrescriptions] = useState<Record<string, Prescription[]>>({});
   const [loading, setLoading] = useState(true);
   const [feedbackDialog, setFeedbackDialog] = useState<{
     open: boolean;
@@ -45,11 +68,21 @@ export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => 
     patientId: string;
     patientName: string;
   } | null>(null);
+  const [prescriptionDialog, setPrescriptionDialog] = useState<{
+    open: boolean;
+    appointmentId: string;
+    patientId: string;
+    patientName: string;
+    patientEmail: string;
+    appointmentDate: string;
+    isEmergencyBooking?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (doctorId) {
       fetchAppointmentHistory();
       fetchFeedbacks();
+      fetchPrescriptions();
     }
   }, [doctorId]);
 
@@ -98,9 +131,30 @@ export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => 
           }
         });
 
+      const emergencyBookingsChannel = supabase
+        .channel('doctor-emergency-bookings')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'emergency_bookings',
+            filter: `doctor_id=eq.${doctorId}`
+          },
+          () => {
+            fetchAppointmentHistory();
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+            console.warn('Realtime subscription unavailable for emergency bookings');
+          }
+        });
+
       return () => {
         supabase.removeChannel(appointmentsChannel);
         supabase.removeChannel(feedbackChannel);
+        supabase.removeChannel(emergencyBookingsChannel);
       };
     } catch (error) {
       console.error('Failed to set up realtime subscriptions:', error);
@@ -111,6 +165,8 @@ export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => 
   const fetchAppointmentHistory = async () => {
     try {
       setLoading(true);
+      
+      // Fetch regular appointments
       const { data, error } = await supabase
         .from("appointments")
         .select("*")
@@ -120,24 +176,68 @@ export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => 
 
       if (error) throw error;
 
-      // Fetch patient names and emails
-      if (data && data.length > 0) {
-        const patientIds = [...new Set(data.map(apt => apt.patient_id))];
+      // Fetch approved emergency bookings
+      // @ts-ignore - emergency_bookings table added via migration
+      const { data: emergencyBookings, error: emergencyError } = await supabase
+        .from("emergency_bookings")
+        .select("id, patient_id, status, urgency_level, reason, responded_at, doctor_notes")
+        .eq("doctor_id", doctorId)
+        .eq("status", "approved")
+        .order("responded_at", { ascending: false });
+
+      if (emergencyError) throw emergencyError;
+
+      // Combine both data sources
+      let allAppointments: any[] = [...(data || [])];
+
+      // Add approved emergency bookings as appointments
+      if (emergencyBookings && emergencyBookings.length > 0) {
+        const emergencyPatientIds = [...new Set(emergencyBookings.map(eb => eb.patient_id))];
+        const { data: patientProfiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", emergencyPatientIds);
+
+        const emergencyAppointments = emergencyBookings.map(eb => ({
+          id: eb.id,
+          patient_id: eb.patient_id,
+          doctor_id: doctorId,
+          appointment_date: eb.responded_at || new Date().toISOString(),
+          status: "approved",
+          reason: eb.reason,
+          notes: `Emergency - ${eb.urgency_level?.toUpperCase()} | ${eb.reason}`,
+          patient_name: patientProfiles?.find(p => p.id === eb.patient_id)?.full_name || "Unknown Patient",
+          patient_email: patientProfiles?.find(p => p.id === eb.patient_id)?.email || "",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          is_emergency_booking: true,
+        }));
+
+        allAppointments = [...allAppointments, ...emergencyAppointments];
+      }
+
+      // Sort by appointment date
+      allAppointments.sort((a, b) => 
+        new Date(b.appointment_date).getTime() - new Date(a.appointment_date).getTime()
+      );
+
+      // Fetch patient names for regular appointments (if not already fetched)
+      const appointmentsNeedingPatients = allAppointments.filter((apt: any) => !apt.patient_name);
+      if (appointmentsNeedingPatients.length > 0) {
+        const patientIds = [...new Set(appointmentsNeedingPatients.map((apt: any) => apt.patient_id))];
         const { data: patientProfiles } = await supabase
           .from("profiles")
           .select("id, full_name, email")
           .in("id", patientIds);
 
-        const appointmentsWithPatients = data.map(apt => ({
+        allAppointments = allAppointments.map((apt: any) => ({
           ...apt,
-          patient_name: patientProfiles?.find(p => p.id === apt.patient_id)?.full_name || "Unknown Patient",
-          patient_email: patientProfiles?.find(p => p.id === apt.patient_id)?.email || ""
+          patient_name: apt.patient_name || patientProfiles?.find(p => p.id === apt.patient_id)?.full_name || "Unknown Patient",
+          patient_email: apt.patient_email || patientProfiles?.find(p => p.id === apt.patient_id)?.email || ""
         }));
-
-        setAppointments(appointmentsWithPatients);
-      } else {
-        setAppointments([]);
       }
+
+      setAppointments(allAppointments);
     } catch (error) {
       console.error("Error fetching appointment history:", error);
       toast.error("Failed to load appointment history");
@@ -165,6 +265,28 @@ export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => 
     }
   };
 
+  const fetchPrescriptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("prescriptions")
+        .select("*")
+        .eq("doctor_id", doctorId);
+
+      if (error) throw error;
+
+      const prescriptionMap: Record<string, Prescription[]> = {};
+      data?.forEach((prescription) => {
+        if (!prescriptionMap[prescription.appointment_id]) {
+          prescriptionMap[prescription.appointment_id] = [];
+        }
+        prescriptionMap[prescription.appointment_id].push(prescription);
+      });
+      setPrescriptions(prescriptionMap);
+    } catch (error) {
+      console.error("Error fetching prescriptions:", error);
+    }
+  };
+
   const canProvideFeedback = (appointment: Appointment) => {
     const appointmentDate = new Date(appointment.appointment_date);
     const now = new Date();
@@ -172,10 +294,11 @@ export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => 
     return (appointment.status === "completed" || appointment.status === "approved") && appointmentDate < now;
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, notes?: string) => {
+    const isEmergency = notes?.includes("Emergency -");
     const statusConfig = {
       completed: { variant: "default" as const, label: "Completed" },
-      approved: { variant: "default" as const, label: "Approved" },
+      approved: { variant: "default" as const, label: isEmergency ? "Emergency - Approved" : "Approved" },
       cancelled: { variant: "destructive" as const, label: "Cancelled" },
       rejected: { variant: "destructive" as const, label: "Rejected" },
     };
@@ -215,17 +338,52 @@ export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => 
               {appointments.map((appointment) => (
                 <Card key={appointment.id} className="group p-3 sm:p-4 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80">
                   <div className="space-y-2 sm:space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm sm:text-base group-hover:text-primary transition-colors truncate">{appointment.patient_name}</p>
-                        <p className="text-xs sm:text-sm text-muted-foreground truncate">{appointment.patient_email}</p>
-                        <div className="flex flex-col sm:flex-row gap-1 sm:gap-4 mt-1 sm:mt-2 text-xs sm:text-sm text-muted-foreground">
-                          <span>{new Date(appointment.appointment_date).toLocaleDateString()}</span>
-                          <span>{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm sm:text-base group-hover:text-primary transition-colors truncate">{appointment.patient_name}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground truncate">{appointment.patient_email}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {getStatusBadge(appointment.status, appointment.notes)}
                         </div>
                       </div>
-                      <div className="flex-shrink-0">
-                        {getStatusBadge(appointment.status)}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="flex gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
+                          <span>{new Date(appointment.appointment_date).toLocaleDateString()}</span>
+                          <span className="hidden sm:inline">{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="sm:hidden">{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!hasAppointmentPassed(appointment.appointment_date)}
+                          onClick={() =>
+                            setPrescriptionDialog({
+                              open: true,
+                              appointmentId: appointment.id,
+                              patientId: appointment.patient_id,
+                              patientName: appointment.patient_name || "Patient",
+                              patientEmail: appointment.patient_email || "",
+                              appointmentDate: appointment.appointment_date,
+                              isEmergencyBooking: appointment.is_emergency_booking || false,
+                            })
+                          }
+                          className="border-primary/20 hover:bg-primary/10 h-8 text-xs sm:ml-auto"
+                          title={hasAppointmentPassed(appointment.appointment_date) ? "Add or manage prescription for this appointment" : "Prescription can only be added after appointment time"}
+                        >
+                          <PlusCircle className="h-3 w-3 mr-1" />
+                          <span className="hidden sm:inline">
+                            {prescriptions[appointment.id] && prescriptions[appointment.id].length > 0
+                              ? `Add Prescription (${prescriptions[appointment.id].length})`
+                              : "Add Prescription"}
+                          </span>
+                          <span className="sm:hidden">
+                            {prescriptions[appointment.id] && prescriptions[appointment.id].length > 0
+                              ? `Prescription (${prescriptions[appointment.id].length})`
+                              : "Prescription"}
+                          </span>
+                        </Button>
                       </div>
                     </div>
                     
@@ -337,6 +495,29 @@ export const DoctorAppointmentHistory = ({ doctorId }: { doctorId: string }) => 
           userRole="doctor"
           patientName={feedbackDialog.patientName}
           existingFeedback={feedbacks[feedbackDialog.appointmentId]}
+        />
+      )}
+
+      {prescriptionDialog && (
+        <PrescriptionUploadDialog
+          open={prescriptionDialog.open}
+          onOpenChange={(open) => {
+            if (!open) setPrescriptionDialog(null);
+          }}
+          appointmentId={prescriptionDialog.appointmentId}
+          doctorId={doctorId}
+          patientId={prescriptionDialog.patientId}
+          patientName={prescriptionDialog.patientName}
+          patientEmail={prescriptionDialog.patientEmail}
+          doctorName={doctorName}
+          doctorLicense={doctorLicense}
+          doctorSpecialization={doctorSpecialization}
+          appointmentDate={prescriptionDialog.appointmentDate}
+          prescriptions={prescriptions[prescriptionDialog.appointmentId] || []}
+          onPrescriptionAdded={() => {
+            fetchPrescriptions();
+          }}
+          isEmergencyBooking={prescriptionDialog.isEmergencyBooking}
         />
       )}
     </>

@@ -270,27 +270,29 @@ export function PatientDetailsDialog({
               </Avatar>
               <DialogTitle className="text-lg md:text-2xl truncate">{patient.full_name}</DialogTitle>
             </div>
-            <div className="flex flex-wrap gap-2 md:absolute md:top-6 md:right-6">
+            <div className="flex flex-wrap gap-2 md:absolute md:top-6 md:right-6 md:flex-nowrap">
               <Button
                 onClick={handleStatusChange}
                 disabled={isChangingStatus || !onStatusChange}
                 variant={patient.status === "active" ? "outline" : "default"}
                 title={patient.status === "active" ? "Deactivate patient" : "Activate patient"}
                 size="sm"
-                className="text-xs md:text-sm"
+                className="text-xs md:text-sm flex-1 md:flex-none"
               >
                 {patient.status === "active" ? "Deactivate" : "Activate"}
               </Button>
               <Button
                 onClick={handleDownloadPDF}
-                className="gap-2 text-xs md:text-sm"
+                className="gap-2 text-xs md:text-sm flex-1 md:flex-none"
                 size="sm"
                 title="Download patient clinical summary as PDF"
               >
                 <Download className="h-3 w-3 md:h-4 md:w-4" />
                 <span className="hidden sm:inline">PDF</span>
               </Button>
-              <PatientQRCode patient={patient} />
+              <div className="flex-1 md:flex-none">
+                <PatientQRCode patient={patient} />
+              </div>
             </div>
           </div>
         </DialogHeader>
@@ -370,51 +372,51 @@ export function PatientDetailsDialog({
                 </div>
               </Card>
 
-              <Card className="p-4">
-                <h4 className="font-semibold mb-3">Active Medications</h4>
-                <div className="space-y-2 text-sm">
+              <Card className="p-3 md:p-4">
+                <h4 className="font-semibold mb-2 md:mb-3 text-xs md:text-sm">Active Medications</h4>
+                <div className="space-y-1 md:space-y-2 text-xs md:text-sm">
                   {patient.medications && patient.medications.length > 0 ? (
                     patient.medications.map((med: any) => (
-                      <div key={med.id} className="border-b pb-2">
-                        <p className="font-medium">{med.name}</p>
-                        <p className="text-muted-foreground">
+                      <div key={med.id} className="border-b pb-1 md:pb-2">
+                        <p className="font-medium text-xs md:text-sm">{med.name}</p>
+                        <p className="text-muted-foreground text-xs">
                           {med.dosage} - {med.frequency}
                         </p>
                       </div>
                     ))
                   ) : (
-                    <p className="text-muted-foreground">No active medications</p>
+                    <p className="text-muted-foreground text-xs">No active medications</p>
                   )}
                 </div>
               </Card>
 
-              <Card className="p-4">
-                <h4 className="font-semibold mb-3">Recent Health Events</h4>
-                <div className="space-y-2 text-sm">
+              <Card className="p-3 md:p-4">
+                <h4 className="font-semibold mb-2 md:mb-3 text-xs md:text-sm">Recent Health Events</h4>
+                <div className="space-y-1 md:space-y-2 text-xs md:text-sm">
                   {patient.health_events && patient.health_events.length > 0 ? (
                     patient.health_events.map((event: any) => (
-                      <div key={event.id} className="border-b pb-2">
-                        <p className="font-medium">{event.title}</p>
+                      <div key={event.id} className="border-b pb-1 md:pb-2">
+                        <p className="font-medium text-xs md:text-sm">{event.title}</p>
                         <p className="text-muted-foreground text-xs">
                           {new Date(event.event_date).toLocaleDateString()}
                         </p>
                       </div>
                     ))
                   ) : (
-                    <p className="text-muted-foreground">No recent events</p>
+                    <p className="text-muted-foreground text-xs">No recent events</p>
                   )}
                 </div>
               </Card>
 
-              <Card className="p-4 md:col-span-2">
-                <h4 className="font-semibold mb-3">Medical Records</h4>
-                <div className="space-y-2 text-sm">
+              <Card className="p-3 md:p-4 md:col-span-2">
+                <h4 className="font-semibold mb-2 md:mb-3 text-xs md:text-sm">Medical Records</h4>
+                <div className="space-y-2 text-xs md:text-sm">
                   {patient.medical_records && patient.medical_records.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
                       {patient.medical_records.map((record: any) => (
-                        <div key={record.id} className="p-3 border rounded-lg flex items-start justify-between gap-3 bg-secondary/30">
+                        <div key={record.id} className="p-2 md:p-3 border rounded-lg flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 md:gap-3 bg-secondary/30">
                           <div className="min-w-0 flex-1">
-                            <p className="font-medium truncate">{record.file_name}</p>
+                            <p className="font-medium truncate text-xs md:text-sm">{record.file_name}</p>
                             <p className="text-muted-foreground text-xs">
                               {new Date(record.uploaded_at || record.created_at).toLocaleDateString()}
                             </p>
@@ -424,11 +426,12 @@ export function PatientDetailsDialog({
                               </p>
                             )}
                           </div>
-                          <div className="shrink-0 flex gap-2">
+                          <div className="shrink-0 flex gap-1 md:gap-2 w-full sm:w-auto">
                             <Button 
                               variant="outline" 
                               size="sm" 
                               onClick={() => handleRecordView(record.file_path || '', record.file_name)}
+                              className="flex-1 sm:flex-auto h-8 text-xs md:text-sm"
                             >
                               View
                             </Button>
@@ -436,6 +439,7 @@ export function PatientDetailsDialog({
                               variant="default" 
                               size="sm" 
                               onClick={() => handleRecordDownload(record.file_path || '', record.file_name)}
+                              className="flex-1 sm:flex-auto h-8 text-xs md:text-sm"
                             >
                               Download
                             </Button>
@@ -444,7 +448,7 @@ export function PatientDetailsDialog({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-muted-foreground">No medical records uploaded</p>
+                    <p className="text-muted-foreground text-xs md:text-sm">No medical records uploaded</p>
                   )}
                 </div>
               </Card>

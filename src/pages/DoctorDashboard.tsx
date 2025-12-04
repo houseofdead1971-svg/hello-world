@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
 import { recoverUserRole } from "@/lib/role-recovery";
+import { getTodayIST } from "@/lib/istTimezone";
 import { ProfileDropdown } from "@/components/dashboard/ProfileDropdown";
 import Notifications from "@/components/dashboard/Notifications";
 import { AppointmentManagement } from "@/components/dashboard/AppointmentManagement";
@@ -55,6 +56,8 @@ const DoctorDashboard = () => {
   const [activeTab, setActiveTab] = useState("patients");
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [doctorLicense, setDoctorLicense] = useState<string>("");
+  const [doctorSpecialization, setDoctorSpecialization] = useState<string>("");
   const [stats, setStats] = useState({
     todayAppointments: 0,
     pendingReports: 0,
@@ -111,10 +114,13 @@ const DoctorDashboard = () => {
   const checkAuth = async () => {
     try {
       console.log("[DoctorDashboard] Starting auth check...");
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
       
-      if (!user) {
-        console.error("[DoctorDashboard] No authenticated user found");
+      if (authError || !user) {
+        console.error("[DoctorDashboard] Auth error or no user found:", authError);
+        // Clear invalid session
+        localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
+        await supabase.auth.signOut();
         navigate("/auth");
         return;
       }
@@ -237,6 +243,12 @@ const DoctorDashboard = () => {
       setLoading(false);
     } catch (error) {
       console.error("[DoctorDashboard] Auth check error:", error);
+      // Clear session on any auth error
+      if (error instanceof Error && error.message?.includes('Refresh Token')) {
+        console.warn('[DoctorDashboard] Refresh token error, clearing session');
+        localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
+        await supabase.auth.signOut();
+      }
       toast.error("Authentication error. Please sign in again.");
       navigate("/auth");
     }
@@ -244,54 +256,106 @@ const DoctorDashboard = () => {
 
   const fetchDoctorName = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      console.log("[fetchDoctorName] Starting fetch for user:", userId);
+      
+      // First, get the doctor's name from profiles table
+      const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("full_name")
         .eq("id", userId)
         .maybeSingle();
 
-      if (error) {
-        console.error("Error fetching doctor name:", error);
+      if (profileError) {
+        console.error("[fetchDoctorName] Error fetching doctor profile:", profileError);
         return;
       }
 
-      if (data?.full_name) {
-        console.log("Doctor name loaded:", data.full_name);
-        setDoctorName(data.full_name);
+      console.log("[fetchDoctorName] Profile data:", profileData);
+
+      // Then, get license and specialization from doctor_profiles table
+      // Note: doctor_profiles uses user_id (not id) as the foreign key
+      const { data: doctorData, error: doctorError } = await supabase
+        .from("doctor_profiles")
+        .select("license_number, specialization")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (doctorError) {
+        console.error("[fetchDoctorName] Error fetching doctor profile details:", doctorError);
+      }
+
+      console.log("[fetchDoctorName] Doctor profile data:", doctorData);
+
+      if (profileData) {
+        const license = doctorData?.license_number || "";
+        const specialization = doctorData?.specialization || "";
+
+        console.log("[fetchDoctorName] Setting state:", {
+          full_name: profileData.full_name,
+          license_number: license,
+          specialization: specialization,
+        });
+
+        setDoctorName(profileData.full_name || "");
+        setDoctorLicense(license);
+        setDoctorSpecialization(specialization);
+        
+        console.log("[fetchDoctorName] State updated successfully");
       } else {
-        console.warn("Doctor name not found in profile");
+        console.warn("[fetchDoctorName] Doctor profile not found for user:", userId);
       }
     } catch (error) {
-      console.error("Exception fetching doctor name:", error);
+      console.error("[fetchDoctorName] Exception fetching doctor name:", error);
     }
   };
 
   const loadDoctorStats = async (doctorId: string) => {
     try {
       // Get today's date range
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      // Get today's date in IST
+      const todayIST = getTodayIST(); // Format: YYYY-MM-DD
+      const tomorrowIST = new Date();
+      tomorrowIST.setUTCDate(tomorrowIST.getUTCDate() + 1);
+      const tomorrowISTParts = tomorrowIST.toISOString().split('T')[0];
 
-      // Count today's appointments
+      // Count today's appointments based on IST date
       const { count: todayCount } = await supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
         .eq("doctor_id", doctorId)
-        .gte("appointment_date", today.toISOString())
-        .lt("appointment_date", tomorrow.toISOString());
+        .gte("appointment_date", `${todayIST}T00:00:00Z`)
+        .lt("appointment_date", `${tomorrowISTParts}T00:00:00Z`);
 
-      // Count pending appointments (pending reports)
-      const { count: pendingCount } = await supabase
+      // Count pending appointments (regular pending appointments that haven't passed)
+      const { data: pendingAppointments } = await supabase
         .from("appointments")
-        .select("*", { count: "exact", head: true })
+        .select("appointment_date")
         .eq("doctor_id", doctorId)
         .eq("status", "pending");
 
+      // Count pending emergency bookings that haven't been scheduled yet or have scheduled dates that haven't passed
+      const { data: pendingEmergencies } = await supabase
+        .from("emergency_bookings")
+        .select("scheduled_date, requested_at")
+        .eq("doctor_id", doctorId)
+        .eq("status", "pending");
+
+      // Filter out appointments that have already passed (IST-aware)
+      const { hasAppointmentPassed } = await import("@/lib/istTimezone");
+      
+      const validPendingAppointments = (pendingAppointments || []).filter(apt => 
+        !hasAppointmentPassed(apt.appointment_date)
+      ).length;
+
+      const validPendingEmergencies = (pendingEmergencies || []).filter(eb => {
+        // Show if no scheduled_date yet, or if scheduled_date hasn't passed
+        if (!eb.scheduled_date) return true;
+        return !hasAppointmentPassed(eb.scheduled_date);
+      }).length;
+
       setStats({
         todayAppointments: todayCount || 0,
-        pendingReports: pendingCount || 0,
+        pendingReports: validPendingAppointments + validPendingEmergencies,
       });
     } catch (error) {
       console.error("Error loading stats:", error);
@@ -406,7 +470,11 @@ const DoctorDashboard = () => {
     console.log("Viewing details for patient ID:", patientId);
     const patient = patients.find(p => p.id === patientId);
     if (patient) {
-      // Fetch additional patient details
+      // Show patient info immediately and open dialog right away
+      setSelectedPatient(patient);
+      setDetailsDialogOpen(true);
+      
+      // Fetch additional patient details in background without blocking
       try {
         const [medsData, eventsData, recordsMetaData, storageFiles] = await Promise.all([
           supabase
@@ -482,17 +550,16 @@ const DoctorDashboard = () => {
 
         console.log("Final medical records:", medicalRecords.length, "records");
 
+        // Update with full details
         setSelectedPatient({
           ...patient,
           medications: medsData.data || [],
           health_events: eventsData.data || [],
           medical_records: medicalRecords,
         });
-        setDetailsDialogOpen(true);
       } catch (error) {
         console.error("Error fetching patient details:", error);
-        setSelectedPatient(patient);
-        setDetailsDialogOpen(true);
+        // Dialog already open with basic info, no need to fail
       }
     }
   };
@@ -665,7 +732,7 @@ const DoctorDashboard = () => {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 mb-8 md:mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8 mb-8 md:mb-12">
           <Card className="group relative p-4 md:p-8 bg-gradient-to-br from-card via-card to-card/50 border-border/50 hover:border-primary/50 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-1">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <div className="relative flex items-center gap-3 md:gap-5">
@@ -699,18 +766,6 @@ const DoctorDashboard = () => {
               <div className="min-w-0">
                 <p className="text-xs md:text-sm font-medium text-muted-foreground mb-1">Pending Reports</p>
                 <p className="text-2xl md:text-3xl font-bold bg-gradient-to-br from-foreground to-primary-light bg-clip-text text-transparent">{stats.pendingReports}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="group relative p-4 md:p-8 bg-gradient-to-br from-card via-card to-card/50 border-border/50 hover:border-primary/50 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="relative flex items-center gap-3 md:gap-5">
-              <div className="p-3 md:p-4 rounded-2xl bg-gradient-to-br from-primary-dark/20 to-primary-dark/10 group-hover:from-primary-dark/30 group-hover:to-primary-dark/20 transition-all duration-300 flex-shrink-0">
-                <Activity className="h-6 w-6 md:h-8 md:w-8 text-primary-dark" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs md:text-sm font-medium text-muted-foreground mb-1">Active Cases</p>
-                <p className="text-2xl md:text-3xl font-bold bg-gradient-to-br from-foreground to-primary-dark bg-clip-text text-transparent">{patients.length}</p>
               </div>
             </div>
           </Card>
@@ -835,7 +890,12 @@ const DoctorDashboard = () => {
             </TabsContent>
 
             <TabsContent value="history">
-              <DoctorAppointmentHistory doctorId={user?.id || ""} />
+              <DoctorAppointmentHistory 
+                doctorId={user?.id || ""} 
+                doctorName={doctorName}
+                doctorLicense={doctorLicense}
+                doctorSpecialization={doctorSpecialization}
+              />
             </TabsContent>
           </Tabs>
         </Card>

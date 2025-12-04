@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { hasAppointmentPassed, formatAppointmentDateIST, getCurrentISTTime } from "@/lib/istTimezone";
 
 interface Appointment {
   id: string;
@@ -24,8 +25,23 @@ interface Appointment {
   doctor_name?: string;
 }
 
+interface EmergencyBooking {
+  id: string;
+  doctor_id: string;
+  status: string;
+  urgency_level: string;
+  reason: string;
+  doctor_notes?: string;
+  requested_at: string;
+  responded_at?: string;
+  doctor_name?: string;
+  isEmergency: true;
+}
+
+type AnyAppointment = Appointment | EmergencyBooking;
+
 export const PatientAppointments = ({ patientId }: { patientId: string }) => {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointments, setAppointments] = useState<AnyAppointment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,7 +57,7 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
     let pollingInterval: number | undefined;
 
     try {
-      const channel = supabase
+      const appointmentsChannel = supabase
         .channel('patient-appointments')
         .on(
           'postgres_changes',
@@ -57,14 +73,12 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
         )
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            // Realtime is working, clear polling if active
             if (pollingInterval) {
               clearInterval(pollingInterval);
               pollingInterval = undefined;
             }
           } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
             console.warn('Realtime subscription unavailable for appointments, falling back to polling');
-            // Start polling every 10 seconds
             if (!pollingInterval) {
               pollingInterval = window.setInterval(() => {
                 fetchAppointments();
@@ -73,19 +87,36 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
           }
         });
 
+      // Subscribe to emergency bookings
+      const emergencyChannel = supabase
+        .channel('patient-emergency-bookings')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'emergency_bookings',
+            filter: `patient_id=eq.${patientId}`
+          },
+          () => {
+            fetchAppointments();
+          }
+        )
+        .subscribe();
+
       return () => {
         if (pollingInterval) {
           clearInterval(pollingInterval);
         }
         try {
-          supabase.removeChannel(channel);
+          supabase.removeChannel(appointmentsChannel);
+          supabase.removeChannel(emergencyChannel);
         } catch (e) {
           // ignore cleanup errors
         }
       };
     } catch (error) {
-      console.error('Failed to set up realtime subscription for appointments, using polling:', error);
-      // Start polling as fallback
+      console.error('Failed to set up realtime subscription, using polling:', error);
       pollingInterval = window.setInterval(() => {
         fetchAppointments();
       }, 10000) as unknown as number;
@@ -99,34 +130,81 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
 
   const fetchAppointments = async () => {
     try {
-      const { data: appointmentsData, error } = await supabase
+      const now = getCurrentISTTime();
+      
+      // Fetch regular appointments
+      const { data: appointmentsData, error: apptError } = await supabase
         .from("appointments")
         .select("*")
         .eq("patient_id", patientId)
         .in("status", ["pending", "approved"])
         .order("appointment_date", { ascending: true });
 
-      if (error) throw error;
+      if (apptError) throw apptError;
 
-      const now = new Date();
-      
       // Filter out appointments that have passed
       const upcomingAppointments = appointmentsData?.filter(apt => {
         const aptDate = new Date(apt.appointment_date);
-        
-        // Drop pending appointments if time has passed
-        if (apt.status === "pending" && aptDate < now) {
+        if ((apt.status === "pending" || apt.status === "approved") && aptDate < now) {
           return false;
         }
-        
-        // Drop approved appointments that have passed (they should be in history)
-        if (apt.status === "approved" && aptDate < now) {
-          return false;
-        }
-        
         return true;
       }) || [];
 
+      // Fetch emergency bookings - Show pending and approved (only pending shown here, approved go to history)
+      // @ts-ignore - emergency_bookings table added via migration
+      const { data: emergencyData, error: emergencyError } = await supabase
+        .from("emergency_bookings")
+        .select("*")
+        .eq("patient_id", patientId)
+        .in("status", ["pending", "approved", "responded"])
+        .order("requested_at", { ascending: false });
+
+      if (emergencyError && emergencyError.code !== 'PGRST116') {
+        console.warn("Error fetching emergency bookings:", emergencyError);
+      }
+
+      // Filter to show only pending emergency bookings (approved ones go to history)
+      const pendingEmergencyData = emergencyData?.filter((eb: any) => eb.status === "pending") || [];
+
+      // Filter emergency bookings by time - don't show if already passed
+      // Use scheduled_date if available, otherwise use responded_at or requested_at
+      const validPendingEmergency = pendingEmergencyData.filter((eb: any) => {
+        const dateToCheck = eb.scheduled_date || eb.responded_at || eb.requested_at;
+        if (!dateToCheck) return true;
+        // Only show if the appointment time hasn't passed (using IST)
+        return !hasAppointmentPassed(dateToCheck);
+      });
+
+      // Combine all appointments and emergency bookings
+      let allAppointments: AnyAppointment[] = [];
+
+      // Add emergency bookings first (higher priority)
+      if (validPendingEmergency && validPendingEmergency.length > 0) {
+        const emergencyDoctorIds = [...new Set(validPendingEmergency.map((eb: any) => eb.doctor_id))];
+        const { data: doctorProfiles } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", emergencyDoctorIds);
+
+        const emergencyBookings = validPendingEmergency.map((eb: any) => ({
+          id: eb.id,
+          doctor_id: eb.doctor_id,
+          status: eb.status,
+          urgency_level: eb.urgency_level,
+          reason: eb.reason,
+          doctor_notes: eb.doctor_notes,
+          requested_at: eb.requested_at,
+          responded_at: eb.responded_at,
+          appointment_date: eb.scheduled_date || eb.responded_at || eb.requested_at,
+          doctor_name: doctorProfiles?.find((doc: any) => doc.id === eb.doctor_id)?.full_name || "Unknown Doctor",
+          isEmergency: true as const,
+        }));
+
+        allAppointments = [...emergencyBookings, ...allAppointments];
+      }
+
+      // Add regular appointments
       if (upcomingAppointments.length > 0) {
         const doctorIds = [...new Set(upcomingAppointments.map((apt) => apt.doctor_id))];
         const { data: profiles, error: profileError } = await supabase
@@ -146,10 +224,10 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
           };
         });
 
-        setAppointments(enrichedAppointments);
-      } else {
-        setAppointments([]);
+        allAppointments = [...allAppointments, ...enrichedAppointments];
       }
+
+      setAppointments(allAppointments);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching appointments:", error);
@@ -159,8 +237,8 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
   };
 
   const cancelAppointment = async (appointmentId: string, appointmentDate: string) => {
-    // Check if appointment time has passed
-    if (new Date(appointmentDate) < new Date()) {
+    // Check if appointment time has passed (using IST)
+    if (hasAppointmentPassed(appointmentDate)) {
       toast.error("Cannot cancel an appointment that has already passed");
       return;
     }
@@ -191,7 +269,7 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
             body: {
               user_id: appointment.doctor_id,
               title: 'Appointment cancelled by patient',
-              message: `A patient has cancelled their appointment scheduled for ${new Date(appointmentDate).toLocaleString()}.`,
+              message: `A patient has cancelled their appointment scheduled for ${formatAppointmentDateIST(appointmentDate)}.`,
               type: 'appointment',
               link: `/doctor-dashboard`,
             },
@@ -209,11 +287,32 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
     }
   };
 
-  const hasAppointmentPassed = (appointmentDate: string) => {
-    return new Date(appointmentDate) < new Date();
-  };
+  const getStatusBadge = (status: string, isEmergency?: boolean, urgencyLevel?: string) => {
+    if (isEmergency) {
+      // Map any old urgency levels to valid ones
+      let normalizedUrgency = urgencyLevel?.toLowerCase() || "high";
+      if (normalizedUrgency === "medium" || normalizedUrgency === "low") {
+        normalizedUrgency = "high";
+      }
+      
+      const urgencyColors = {
+        high: "bg-orange-100 text-orange-800",
+        critical: "bg-red-100 text-red-800",
+      };
+      const colorClass = urgencyColors[normalizedUrgency as keyof typeof urgencyColors] || urgencyColors.high;
+      return (
+        <div className="flex items-center gap-2">
+          <Badge variant="default" className="gap-1 bg-red-600">
+            <AlertTriangle className="h-3 w-3" />
+            Emergency
+          </Badge>
+          <Badge className={`gap-1 ${colorClass} text-xs`}>
+            {normalizedUrgency.toUpperCase()}
+          </Badge>
+        </div>
+      );
+    }
 
-  const getStatusBadge = (status: string) => {
     const badges = {
       pending: <Badge variant="secondary" className="gap-1"><AlertCircle className="h-3 w-3" />Pending</Badge>,
       approved: <Badge variant="default" className="gap-1"><CheckCircle className="h-3 w-3" />Approved</Badge>,
@@ -263,17 +362,18 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
                     const status = apt.status?.toLowerCase()?.trim();
                     const isPending = status === "pending";
                     const isApproved = status === "approved";
+                    const isEmergency = 'isEmergency' in apt && apt.isEmergency;
                     const canCancel = isPending || (isApproved && !hasAppointmentPassed(apt.appointment_date));
                     
                     return (
-                      <TableRow key={apt.id}>
+                      <TableRow key={apt.id} className={isEmergency ? "bg-red-50/50 dark:bg-red-950/20" : ""}>
                         <TableCell className="font-medium">
                           <div className="max-w-[150px] truncate">{apt.doctor_name}</div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                            <span className="text-sm">{new Date(apt.appointment_date).toLocaleString()}</span>
+                            <span className="text-sm">{formatAppointmentDateIST(apt.appointment_date)}</span>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -281,7 +381,9 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
                             {apt.reason || "N/A"}
                           </div>
                         </TableCell>
-                        <TableCell>{getStatusBadge(apt.status)}</TableCell>
+                        <TableCell>
+                          {getStatusBadge(apt.status, isEmergency, 'urgency_level' in apt ? apt.urgency_level : undefined)}
+                        </TableCell>
                         <TableCell>
                           {canCancel ? (
                             <Button
@@ -311,20 +413,21 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
                 const status = apt.status?.toLowerCase()?.trim();
                 const isPending = status === "pending";
                 const isApproved = status === "approved";
+                const isEmergency = 'isEmergency' in apt && apt.isEmergency;
                 const canCancel = isPending || (isApproved && !hasAppointmentPassed(apt.appointment_date));
                 
                 return (
-                  <Card key={apt.id} className="p-4 border-primary/20">
+                  <Card key={apt.id} className={`p-4 border-primary/20 ${isEmergency ? "border-red-400 bg-red-50/50 dark:bg-red-950/20" : ""}`}>
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <h4 className="font-semibold text-base mb-1">{apt.doctor_name}</h4>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Clock className="h-3 w-3 flex-shrink-0" />
-                            <span className="text-xs">{new Date(apt.appointment_date).toLocaleString()}</span>
+                            <span className="text-xs">{formatAppointmentDateIST(apt.appointment_date)}</span>
                           </div>
                         </div>
-                        {getStatusBadge(apt.status)}
+                        {getStatusBadge(apt.status, isEmergency, 'urgency_level' in apt ? apt.urgency_level : undefined)}
                       </div>
                       
                       {apt.reason && (
@@ -334,10 +437,10 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
                         </div>
                       )}
 
-                      {apt.notes && (
+                      {('notes' in apt && apt.notes) || ('doctor_notes' in apt && apt.doctor_notes) && (
                         <div className="text-xs text-muted-foreground">
                           <span className="font-medium">Notes: </span>
-                          <span>{apt.notes}</span>
+                          <span>{'notes' in apt ? apt.notes : ('doctor_notes' in apt ? apt.doctor_notes : '')}</span>
                         </div>
                       )}
 

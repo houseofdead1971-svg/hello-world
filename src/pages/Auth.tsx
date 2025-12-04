@@ -44,23 +44,36 @@ const Auth = () => {
   const [hospitalAffiliation, setHospitalAffiliation] = useState("");
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      if (error) {
-        console.error('Session error:', error);
-        // Clear invalid session
-        await supabase.auth.signOut();
-      } else if (session) {
-        navigate("/dashboard");
+    // Clean up any invalid sessions on mount
+    const cleanupInvalidSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error || !session) {
+          // Clear any corrupted session data
+          localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
+          console.log('Cleared invalid session');
+        } else if (session) {
+          navigate("/dashboard");
+        }
+      } catch (err) {
+        console.error('Session check error:', err);
+        localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
       }
-    });
+    };
+
+    cleanupInvalidSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
         // Stay on auth page
+        console.log('User signed out');
       } else if (event === 'TOKEN_REFRESHED' && !session) {
         // Token refresh failed, clear session
+        console.warn('Token refresh failed, clearing session');
+        localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
         await supabase.auth.signOut();
-      } else if (session) {
+      } else if (event === 'SIGNED_IN' && session) {
+        console.log('User signed in');
         navigate("/dashboard");
       }
     });
@@ -104,6 +117,9 @@ const Auth = () => {
     setLoading(true);
 
     try {
+      // Clear any existing invalid session before attempting login
+      localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
+      
       const { error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
@@ -111,6 +127,9 @@ const Auth = () => {
           toast.error("Invalid email or password. Please try again.");
         } else if (error.message.includes("Email not confirmed")) {
           toast.error("Please verify your email before signing in. Check your inbox for a verification link.");
+        } else if (error.message.includes("Refresh Token")) {
+          toast.error("Session error. Please clear your browser cache and try again.");
+          localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
         } else {
           toast.error(error.message || "Failed to sign in. Please try again.");
         }
@@ -120,7 +139,9 @@ const Auth = () => {
 
       toast.success("Signed in successfully!");
     } catch (error: any) {
+      console.error('Sign in error:', error);
       toast.error(`Sign in failed: ${error.message}`);
+      localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
     } finally {
       setLoading(false);
     }

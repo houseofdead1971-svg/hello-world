@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { formatAppointmentDateIST, getTodayIST, isDateTodayIST, filterPastTimeSlots } from "@/lib/istTimezone";
 
 interface Doctor {
   id: string;
@@ -83,20 +84,10 @@ export const AvailableDoctors = ({ patientId }: { patientId: string }) => {
         slots.push({ value: time24, label: time12 });
       }
     }
-    // If a date is provided and it's today, filter out past times
-    if (!selectedDate) return slots;
-    try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      if (selectedDate === todayStr) {
-        const now = new Date();
-        return slots.filter((slot) => {
-          const slotDate = new Date(`${selectedDate}T${slot.value}`);
-          return slotDate > now;
-        });
-      }
-    } catch (e) {
-      // on error, fall back to returning all slots
-      console.error('Error filtering time slots by date:', e);
+
+    // Filter out past times for today (using IST)
+    if (selectedDate) {
+      return filterPastTimeSlots(selectedDate, slots);
     }
 
     return slots;
@@ -111,6 +102,7 @@ export const AvailableDoctors = ({ patientId }: { patientId: string }) => {
     setSubmitting(true);
 
     try {
+      // Create appointment date in IST
       const appointmentDateTime = new Date(`${appointmentDate}T${appointmentTime}`);
 
       const { error } = await supabase.from("appointments").insert({
@@ -131,7 +123,7 @@ export const AvailableDoctors = ({ patientId }: { patientId: string }) => {
           body: {
             user_id: selectedDoctor.id,
             title: 'New appointment request',
-            message: `You have a new appointment request for ${appointmentDateTime.toLocaleString()}. Reason: ${reason || 'Not specified'}`,
+            message: `You have a new appointment request for ${formatAppointmentDateIST(appointmentDateTime)}. Reason: ${reason || 'Not specified'}`,
             type: 'appointment',
             link: `/doctor-dashboard`,
           },
@@ -244,14 +236,17 @@ export const AvailableDoctors = ({ patientId }: { patientId: string }) => {
                                 <p className="font-semibold text-primary text-xs">${doctor.consultation_fee}</p>
                               )}
                             </div>
-                            <Button
-                              size="sm"
-                              onClick={() => setSelectedDoctor(doctor)}
-                              className="bg-gradient-to-r from-primary to-primary-light hover:shadow-md transition-all h-9 px-4 sm:px-3 text-xs sm:text-sm w-full sm:w-auto"
-                            >
-                              <Calendar className="h-4 w-4 mr-2 sm:mr-1" />
-                              Book
-                            </Button>
+                            <div className="flex gap-2 w-full sm:w-auto">
+                              <Button
+                                size="sm"
+                                onClick={() => setSelectedDoctor(doctor)}
+                                className="bg-gradient-to-r from-primary to-primary-light hover:shadow-md transition-all h-9 px-3 text-xs sm:text-sm flex-1 sm:flex-none"
+                              >
+                                <Calendar className="h-4 w-4 mr-1.5" />
+                                <span className="hidden sm:inline">Book</span>
+                                <span className="sm:hidden">Book</span>
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -281,7 +276,7 @@ export const AvailableDoctors = ({ patientId }: { patientId: string }) => {
                 type="date"
                 value={appointmentDate}
                 onChange={(e) => setAppointmentDate(e.target.value)}
-                min={new Date().toISOString().split("T")[0]}
+                min={getTodayIST()}
                 required
               />
             </div>

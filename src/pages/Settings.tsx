@@ -51,9 +51,17 @@ const Settings = () => {
 
   // Load notification preferences on mount
   useEffect(() => {
-    loadUserRole();
-    loadNotificationPreferences();
-    loadSessionInfo();
+    const initializeSettings = async () => {
+      await loadUserRole();
+      loadNotificationPreferences();
+      loadSessionInfo();
+    };
+    
+    initializeSettings();
+  }, []);
+
+  // Load doctor availability once userRole is determined
+  useEffect(() => {
     if (userRole === "doctor") {
       loadDoctorAvailability();
     }
@@ -71,9 +79,36 @@ const Settings = () => {
         .single();
 
       if (error) throw error;
-      if (data) setUserRole(data.role);
+      if (data) {
+        setUserRole(data.role);
+        // Load doctor availability immediately if user is a doctor
+        if (data.role === "doctor") {
+          loadDoctorAvailabilityForUser(user.id);
+        }
+      }
     } catch (error) {
       console.error("Error loading user role:", error);
+    }
+  };
+
+  const loadDoctorAvailabilityForUser = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("doctor_profiles")
+        .select("available_for_consultation")
+        .eq("user_id", userId)
+        .single();
+
+      if (error) {
+        console.warn("Doctor profile not found, using default", error);
+        return;
+      }
+
+      if (data) {
+        setIsAvailable(data.available_for_consultation);
+      }
+    } catch (error) {
+      console.error("Error loading doctor availability:", error);
     }
   };
 
@@ -145,20 +180,7 @@ const Settings = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from("doctor_profiles")
-        .select("available_for_consultation")
-        .eq("user_id", user.id)
-        .single();
-
-      if (error) {
-        console.warn("Doctor profile not found, using default", error);
-        return;
-      }
-
-      if (data) {
-        setIsAvailable(data.available_for_consultation);
-      }
+      await loadDoctorAvailabilityForUser(user.id);
     } catch (error) {
       console.error("Error loading doctor availability:", error);
     }

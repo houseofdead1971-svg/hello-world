@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Activity, Sparkles, Pill, Clock, FileHeart, Shield, Calendar, MessageSquare, Users, Stethoscope, HeartPulse, Brain, Menu, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
@@ -6,8 +6,40 @@ import { usePageTransition } from "@/App";
 import { motion } from "framer-motion";
 import serviceVideo from "@/assets/service.mp4";
 
+const animationStyles = `
+  @keyframes fadeInSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  [data-animate-service],
+  [data-animate-feature] {
+    will-change: opacity, transform;
+  }
+
+  [data-animate-service].animate-fade-in-slide-up,
+  [data-animate-feature].animate-fade-in-slide-up {
+    animation: fadeInSlideUp 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+
+  .animate-delay-100 { animation-delay: 0.05s; }
+  .animate-delay-200 { animation-delay: 0.1s; }
+  .animate-delay-300 { animation-delay: 0.15s; }
+  .animate-delay-400 { animation-delay: 0.2s; }
+  .animate-delay-500 { animation-delay: 0.25s; }
+  .animate-delay-600 { animation-delay: 0.3s; }
+`;
+
 const Services = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [visibleCards, setVisibleCards] = useState<Record<string, boolean>>({});
+  const [visibleFeatures, setVisibleFeatures] = useState<Record<string, boolean>>({});
   const { startTransition } = usePageTransition();
   const navigate = useNavigate();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -121,8 +153,46 @@ const Services = () => {
     }
   ];
 
+  useEffect(() => {
+    const observedCards = new Set<string>();
+    
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting && !observedCards.has(entry.target.id)) {
+          observedCards.add(entry.target.id);
+          if (entry.target.getAttribute('data-animate-service')) {
+            setVisibleCards((prev) => ({
+              ...prev,
+              [entry.target.id]: true,
+            }));
+          } else {
+            setVisibleFeatures((prev) => ({
+              ...prev,
+              [entry.target.id]: true,
+            }));
+          }
+          observer.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.15,
+      rootMargin: "0px 0px -50px 0px",
+    });
+
+    const timer = setTimeout(() => {
+      const cards = document.querySelectorAll("[data-animate-service], [data-animate-feature]");
+      cards.forEach((card) => observer.observe(card));
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, []);
+
   return (
   <div className="min-h-screen relative isolate overflow-hidden bg-gradient-to-br from-background via-background to-secondary/20">
+      <style>{animationStyles}</style>
       {/* Navigation Bar - Modern Professional Design */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/30 bg-background/75 backdrop-blur-2xl shadow-lg shadow-primary/5">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -300,8 +370,19 @@ const Services = () => {
       <section className="py-20 px-4">
         <div className="container mx-auto max-w-7xl">
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {services.map((service, index) => (
-              <div key={index} className="group relative p-8 rounded-lg bg-card border border-border/50 hover:border-primary/50 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-2">
+            {services.map((service, index) => {
+              const cardId = `service-${index + 1}`;
+              const delayClass = ['animate-delay-100', 'animate-delay-200', 'animate-delay-300', 'animate-delay-400', 'animate-delay-500', 'animate-delay-600'][index % 6];
+              return (
+              <div 
+                key={index} 
+                id={cardId} 
+                data-animate-service 
+                className={`group relative p-8 rounded-lg bg-card border border-border/50 hover:border-primary/50 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-2 ${
+                  visibleCards[cardId] ? `animate-fade-in-slide-up ${delayClass}` : ''
+                }`}
+                style={!visibleCards[cardId] ? { opacity: 0, transform: 'translateY(30px)' } : undefined}
+              >
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 <div className="relative space-y-6">
                   <div className={`inline-flex p-4 rounded-md bg-gradient-to-br ${service.gradient} text-white shadow-lg`}>
@@ -324,7 +405,8 @@ const Services = () => {
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       </section>
@@ -336,13 +418,25 @@ const Services = () => {
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">Built with cutting-edge technology and designed for your peace of mind</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {additionalFeatures.map((feature, index) => (
-              <div key={index} className="p-6 rounded-md bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+            {additionalFeatures.map((feature, index) => {
+              const featureId = `feature-${index + 1}`;
+              const delayClass = ['animate-delay-100', 'animate-delay-200', 'animate-delay-300', 'animate-delay-400', 'animate-delay-500', 'animate-delay-600'][index % 6];
+              return (
+              <div 
+                key={index} 
+                id={featureId} 
+                data-animate-feature 
+                className={`p-6 rounded-md bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 ${
+                  visibleFeatures[featureId] ? `animate-fade-in-slide-up ${delayClass}` : ''
+                }`}
+                style={!visibleFeatures[featureId] ? { opacity: 0, transform: 'translateY(30px)' } : undefined}
+              >
                 <div className="inline-flex p-3 rounded-md bg-primary/10 text-primary mb-4">{feature.icon}</div>
                 <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
                 <p className="text-muted-foreground">{feature.description}</p>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       </section>

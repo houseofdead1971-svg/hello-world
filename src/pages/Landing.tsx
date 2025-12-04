@@ -5,9 +5,38 @@ import { Link, useNavigate } from "react-router-dom";
 import { usePageTransition } from "@/App";
 import doctorVideo from "@/assets/doctor_video.mp4";
 
+const animationStyles = `
+  @keyframes fadeInSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  [data-animate-card] {
+    will-change: opacity, transform;
+  }
+
+  [data-animate-card].animate-fade-in-slide-up {
+    animation: fadeInSlideUp 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+
+  [data-animate-card].animate-delay-100 { animation-delay: 0.05s; }
+  [data-animate-card].animate-delay-200 { animation-delay: 0.1s; }
+  [data-animate-card].animate-delay-300 { animation-delay: 0.15s; }
+  [data-animate-card].animate-delay-400 { animation-delay: 0.2s; }
+  [data-animate-card].animate-delay-500 { animation-delay: 0.25s; }
+  [data-animate-card].animate-delay-600 { animation-delay: 0.3s; }
+`;
+
 const Landing = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [visibleCards, setVisibleCards] = useState<Record<string, boolean>>({});
   const { startTransition } = usePageTransition();
   const navigate = useNavigate();
 
@@ -54,8 +83,39 @@ const Landing = () => {
     return () => clearInterval(interval);
   }, [currentSlide]);
 
+  useEffect(() => {
+    const observedCards = new Set<string>();
+    
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const cardId = entry.target.id;
+          if (!observedCards.has(cardId)) {
+            observedCards.add(cardId);
+            setVisibleCards((prev) => ({
+              ...prev,
+              [cardId]: true,
+            }));
+            observer.unobserve(entry.target);
+          }
+        }
+      });
+    }, {
+      threshold: 0.15,
+      rootMargin: "0px 0px -50px 0px",
+    });
+
+    const cards = document.querySelectorAll("[data-animate-card]");
+    cards.forEach((card) => observer.observe(card));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
   return (
     <div className="min-h-screen relative isolate overflow-hidden">
+      <style>{animationStyles}</style>
       {/* Navigation Bar - Modern Professional Design */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/30 bg-background/75 backdrop-blur-2xl shadow-lg shadow-primary/5">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -196,7 +256,7 @@ const Landing = () => {
           <div className="max-w-4xl mx-auto text-center space-y-8">
 
             <h1 className="text-5xl md:text-7xl font-bold tracking-tight">
-              <span className="text-blue-800">Your Health, </span>
+              <span className="text-white">Your Health, </span>
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary-light">
                 Connected & Secure
               </span>
@@ -302,31 +362,43 @@ const Landing = () => {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
             <FeatureCard
+              id="card-1"
+              isVisible={visibleCards["card-1"] || false}
               icon={<Sparkles className="h-8 w-8" />}
               title="AI Health Assistant"
               description="Get personalized health insights and answers to your questions with our AI-powered assistant"
             />
             <FeatureCard
+              id="card-2"
+              isVisible={visibleCards["card-2"] || false}
               icon={<Clock className="h-8 w-8" />}
               title="Health Timeline"
               description="Track your health journey with a comprehensive timeline of all your medical records and events"
             />
             <FeatureCard
+              id="card-3"
+              isVisible={visibleCards["card-3"] || false}
               icon={<Pill className="h-8 w-8" />}
               title="Medication Tracker"
               description="Never miss a dose with smart medication reminders and tracking"
             />
             <FeatureCard
+              id="card-4"
+              isVisible={visibleCards["card-4"] || false}
               icon={<FileHeart className="h-8 w-8" />}
               title="Records Management"
               description="Upload, organize, and access your medical records securely from anywhere"
             />
             <FeatureCard
+              id="card-5"
+              isVisible={visibleCards["card-5"] || false}
               icon={<Shield className="h-8 w-8" />}
               title="HIPAA Compliant"
               description="Your health data is encrypted and protected with industry-leading security"
             />
             <FeatureCard
+              id="card-6"
+              isVisible={visibleCards["card-6"] || false}
               icon={<Activity className="h-8 w-8" />}
               title="Health Insights"
               description="Get actionable insights from your health data to make informed decisions"
@@ -429,9 +501,19 @@ const Landing = () => {
   );
 };
 
-const FeatureCard = ({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) => {
+const FeatureCard = ({ id, isVisible, icon, title, description }: { id: string; isVisible: boolean; icon: React.ReactNode; title: string; description: string }) => {
+  const cardIndex = parseInt(id.split('-')[1]) - 1;
+  const delayClass = ['animate-delay-100', 'animate-delay-200', 'animate-delay-300', 'animate-delay-400', 'animate-delay-500', 'animate-delay-600'][cardIndex] || 'animate-delay-100';
+  
   return (
-    <div className="group p-8 rounded-lg bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+    <div 
+      id={id}
+      data-animate-card
+      className={`group p-8 rounded-lg bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 ${
+        isVisible ? `animate-fade-in-slide-up ${delayClass}` : ''
+      }`}
+      style={!isVisible ? { opacity: 0, transform: 'translateY(30px)' } : undefined}
+    >
       <div className="inline-flex p-3 rounded-lg bg-primary/10 text-primary mb-4 group-hover:scale-110 group-hover:bg-primary/20 transition-all duration-300">
         {icon}
       </div>

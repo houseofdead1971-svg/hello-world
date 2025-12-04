@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Activity, Target, Eye, Heart, Shield, Users, Sparkles, Award, TrendingUp, Menu, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
@@ -6,8 +6,35 @@ import { usePageTransition } from "@/App";
 import { motion } from "framer-motion";
 import mayurPhoto from "@/assets/mayur-photo.jpg";
 
+const animationStyles = `
+  @keyframes fadeInSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  [data-animate-value] {
+    will-change: opacity, transform;
+  }
+
+  [data-animate-value].animate-fade-in-slide-up {
+    animation: fadeInSlideUp 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+
+  .animate-delay-100 { animation-delay: 0.05s; }
+  .animate-delay-200 { animation-delay: 0.1s; }
+  .animate-delay-300 { animation-delay: 0.15s; }
+  .animate-delay-400 { animation-delay: 0.2s; }
+`;
+
 const About = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [visibleValues, setVisibleValues] = useState<Record<string, boolean>>({});
   const { startTransition } = usePageTransition();
   const navigate = useNavigate();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -51,8 +78,39 @@ const About = () => {
     }
   ];
 
+  useEffect(() => {
+    const observedCards = new Set<string>();
+    
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting && !observedCards.has(entry.target.id)) {
+          observedCards.add(entry.target.id);
+          setVisibleValues((prev) => ({
+            ...prev,
+            [entry.target.id]: true,
+          }));
+          observer.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.15,
+      rootMargin: "0px 0px -50px 0px",
+    });
+
+    const timer = setTimeout(() => {
+      const cards = document.querySelectorAll("[data-animate-value]");
+      cards.forEach((card) => observer.observe(card));
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/20">
+      <style>{animationStyles}</style>
       {/* Navigation Bar - Modern Professional Design */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/30 bg-background/75 backdrop-blur-2xl shadow-lg shadow-primary/5">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -267,10 +325,18 @@ const About = () => {
             </p>
           </div>
           <div className="grid md:grid-cols-2 gap-8">
-            {values.map((value, index) => (
+            {values.map((value, index) => {
+              const valueId = `value-${index + 1}`;
+              const delayClass = ['animate-delay-100', 'animate-delay-200', 'animate-delay-300', 'animate-delay-400'][index % 4];
+              return (
               <div
                 key={index}
-                className="group relative p-8 rounded-xl bg-card border border-border/50 hover:border-primary/50 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-2"
+                id={valueId}
+                data-animate-value
+                className={`group relative p-8 rounded-xl bg-card border border-border/50 hover:border-primary/50 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-2 ${
+                  visibleValues[valueId] ? `animate-fade-in-slide-up ${delayClass}` : ''
+                }`}
+                style={!visibleValues[valueId] ? { opacity: 0, transform: 'translateY(30px)' } : undefined}
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 <div className="relative space-y-4">
@@ -281,7 +347,8 @@ const About = () => {
                   <p className="text-muted-foreground leading-relaxed">{value.description}</p>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       </section>

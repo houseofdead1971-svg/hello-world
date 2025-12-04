@@ -115,51 +115,121 @@ const AppContent = () => {
       setShowCookieBanner(true);
     }
 
-    // Check for authenticated user
+    // Check for authenticated user with retry logic
     const checkUser = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          setUser(null);
-          return;
-        }
-        
+      const maxRetries = 3;
+      let lastError: Error | null = null;
+
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
-          const { data: { user }, error } = await supabase.auth.getUser();
-          if (error) {
-            console.error('Auth error:', error);
-            // Clear invalid session
-            await supabase.auth.signOut();
-            setUser(null);
-          } else {
-            setUser(user);
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          
+          if (sessionError) {
+            console.error(`Auth session error (attempt ${attempt + 1}):`, sessionError);
+            lastError = sessionError;
+            
+            // Handle refresh token errors by clearing session
+            if (sessionError.message?.includes('Refresh Token') || sessionError.message?.includes('Invalid')) {
+              console.warn('Clearing invalid session due to refresh token error');
+              localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
+              try {
+                await supabase.auth.signOut();
+              } catch (e) {
+                console.error('Failed to sign out:', e);
+              }
+              setUser(null);
+              return;
+            }
+            
+            // Only retry on network errors
+            if (attempt < maxRetries - 1 && sessionError.message?.includes('Network')) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+              continue;
+            }
+            throw sessionError;
           }
-        } catch (userErr) {
-          console.error('Failed to get user:', userErr);
-          setUser(null);
+
+          if (!session) {
+            setUser(null);
+            return;
+          }
+          
+          try {
+            const { data: { user }, error } = await supabase.auth.getUser();
+            if (error) {
+              console.error('Auth error:', error);
+              // Handle refresh token errors
+              if (error.message?.includes('Refresh Token')) {
+                console.warn('Clearing session due to refresh token error');
+                localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
+              }
+              // Clear invalid session
+              try {
+                await supabase.auth.signOut();
+              } catch (signOutErr) {
+                console.error('Failed to sign out:', signOutErr);
+              }
+              setUser(null);
+            } else {
+              setUser(user);
+            }
+          } catch (userErr) {
+            console.error('Failed to get user:', userErr);
+            setUser(null);
+          }
+          return;
+        } catch (err) {
+          lastError = err as Error;
+          console.error(`Session check failed (attempt ${attempt + 1}):`, err);
+          
+          if (attempt < maxRetries - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            continue;
+          }
         }
-      } catch (err) {
-        console.error('Failed to get session:', err);
-        setUser(null);
       }
+
+      console.error('Failed to check session after retries:', lastError);
+      setUser(null);
     };
 
     checkUser();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'TOKEN_REFRESHED') {
-        console.log('Token refreshed successfully');
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-      } else if (event === 'SIGNED_IN') {
-        setUser(session?.user || null);
-      }
-      setUser(session?.user || null);
-    });
+    // Listen for auth changes with error handling
+    let subscription: any;
+    try {
+      const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+        try {
+          if (event === 'TOKEN_REFRESHED') {
+            console.log('Token refreshed successfully');
+            setUser(session?.user || null);
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+          } else if (event === 'SIGNED_IN') {
+            setUser(session?.user || null);
+          } else if (event === 'USER_UPDATED') {
+            setUser(session?.user || null);
+          } else {
+            setUser(session?.user || null);
+          }
+        } catch (err) {
+          console.error('Error handling auth state change:', err);
+          setUser(null);
+        }
+      });
+      subscription = data.subscription;
+    } catch (err) {
+      console.error('Failed to set up auth state listener:', err);
+    }
 
     return () => {
-      subscription.unsubscribe();
+      if (subscription) {
+        try {
+          subscription.unsubscribe();
+        } catch (err) {
+          console.error('Error unsubscribing from auth changes:', err);
+        }
+      }
     };
   }, []);
 

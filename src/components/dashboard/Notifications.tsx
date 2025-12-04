@@ -121,7 +121,13 @@ export const Notifications = ({ userId }: { userId: string }) => {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAsRead = async (id: string, link?: string | null) => {
+  const markAsRead = async (id: string, link?: string | null, event?: React.MouseEvent) => {
+    // Prevent default dropdown menu behavior
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
     try {
       const { error } = await (supabase as any).from("notifications").update({ read: true }).eq("id", id);
       if (error) throw error;
@@ -131,7 +137,15 @@ export const Notifications = ({ userId }: { userId: string }) => {
       if (link) {
         // Fix old notification links
         const validLink = link.replace('/dashboard/appointments', '/dashboard');
-        navigate(validLink);
+        // Navigate to the link (remove trailing slash for comparison)
+        const currentPath = window.location.pathname.replace(/\/$/, '');
+        const targetPath = validLink.replace(/\/$/, '');
+        
+        // Only navigate if on a different page
+        if (currentPath !== targetPath) {
+          navigate(validLink, { replace: false });
+        }
+        // If already on the same page, just mark as read (no reload needed)
       }
     } catch (err) {
       console.error("Error marking notification as read:", err);
@@ -162,34 +176,42 @@ export const Notifications = ({ userId }: { userId: string }) => {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-auto">
-        <DropdownMenuLabel>
-          <div className="flex items-center justify-between">
-            <span className="font-medium">Notifications</span>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={markAllRead}>
-                <Check className="h-4 w-4 mr-2" />
-                Mark all read
-              </Button>
-            </div>
+      <DropdownMenuContent align="end" className="w-[calc(100vw-32px)] sm:w-96 max-h-[500px] overflow-y-auto p-0">
+        <div className="sticky top-0 bg-background border-b border-border/50 p-3 z-10">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-sm">Notifications</span>
+            <Button size="sm" variant="ghost" onClick={markAllRead} className="h-7 px-2 text-xs flex-shrink-0">
+              <Check className="h-3 w-3 mr-1" />
+              <span className="hidden sm:inline">Mark all read</span>
+              <span className="sm:hidden">Mark all</span>
+            </Button>
           </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+        </div>
 
         {loading ? (
-          <div className="p-4 text-sm text-muted-foreground">Loading...</div>
+          <div className="p-4 text-sm text-muted-foreground text-center">Loading...</div>
         ) : notifications.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">No notifications</div>
+          <div className="p-4 text-sm text-muted-foreground text-center">No notifications</div>
         ) : (
-          notifications.map((n) => (
-            <DropdownMenuItem key={n.id} onClick={() => markAsRead(n.id, n.link)} className={`flex flex-col items-start gap-1 hover:bg-accent hover:text-accent-foreground ${n.read ? 'opacity-60' : ''}`}>
-              <div className="flex items-center justify-between w-full">
-                <div className="text-sm font-medium">{n.title}</div>
-                <div className="text-xs">{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div>
-              </div>
-              <div className="text-xs max-w-full truncate">{n.message}</div>
-            </DropdownMenuItem>
-          ))
+          <div className="divide-y divide-border/30">
+            {notifications.map((n) => (
+              <button
+                key={n.id}
+                onClick={(e) => markAsRead(n.id, n.link, e as React.MouseEvent)}
+                className={`w-full px-3 py-2.5 text-left hover:bg-accent/50 transition-colors ${n.read ? 'opacity-60' : 'font-medium'}`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{n.title}</div>
+                    <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{n.message}</div>
+                  </div>
+                  <div className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 sm:ml-2 mt-1 sm:mt-0">
+                    {n.created_at ? new Date(n.created_at).toLocaleString('en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

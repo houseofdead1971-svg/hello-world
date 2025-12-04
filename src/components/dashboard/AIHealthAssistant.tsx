@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Send, Sparkles, Loader2 } from "lucide-react";
+import { Send, Sparkles, Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +11,13 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+}
+
+// Extend window interface to include n8n chat
+declare global {
+  interface Window {
+    n8nCreateChat?: (config: any) => any;
+  }
 }
 
 // Helper function to generate UUID with fallback
@@ -30,6 +37,10 @@ export const AIHealthAssistant = ({ userId }: { userId: string }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [useN8nChat, setUseN8nChat] = useState(false);
+  const n8nContainerRef = useRef<HTMLDivElement>(null);
+  const n8nInstanceRef = useRef<any>(null);
+
   // Use useMemo to ensure conversationId is stable and doesn't cause re-renders
   const conversationId = useMemo(() => {
     if (!userId) return '';
@@ -44,6 +55,38 @@ export const AIHealthAssistant = ({ userId }: { userId: string }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>([]);
   
+  // Initialize n8n chat widget
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.n8nCreateChat && n8nContainerRef.current) {
+      try {
+        const createChat = window.n8nCreateChat;
+        
+        // Create n8n chat instance in container
+        n8nInstanceRef.current = createChat({
+          webhookUrl: 'http://localhost:5678/webhook/f160b160-2ec1-4cb3-9f5e-6f07ea70f0a9/chat',
+          target: n8nContainerRef.current,
+          metadata: {
+            userId: userId,
+            conversationId: conversationId,
+          },
+          initialMessages: [
+            {
+              message: 'Hello! 👋 I\'m your AI Health Assistant. How can I help you today?',
+              type: 'ai',
+            },
+          ],
+        });
+
+        setUseN8nChat(true);
+        console.log("n8n chat initialized successfully");
+      } catch (error) {
+        console.error("Error initializing n8n chat:", error);
+        // Fallback to local chat if n8n fails
+        setUseN8nChat(false);
+      }
+    }
+  }, [userId, conversationId]);
+  
   // Keep ref in sync with state
   useEffect(() => {
     messagesRef.current = messages;
@@ -51,7 +94,7 @@ export const AIHealthAssistant = ({ userId }: { userId: string }) => {
 
   // Memoize loadMessages to prevent unnecessary re-renders
   const loadMessages = useCallback(async () => {
-    if (!userId || !conversationId) return;
+    if (!userId || !conversationId || useN8nChat) return;
     
     try {
       const { data, error } = await supabase
@@ -76,7 +119,7 @@ export const AIHealthAssistant = ({ userId }: { userId: string }) => {
     } catch (error) {
       console.error("Unexpected error loading messages:", error);
     }
-  }, [userId, conversationId]);
+  }, [userId, conversationId, useN8nChat]);
 
   useEffect(() => {
     loadMessages();
@@ -111,7 +154,7 @@ export const AIHealthAssistant = ({ userId }: { userId: string }) => {
   }, [userId, conversationId]);
 
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || useN8nChat) return;
 
     const userMessage = input.trim();
     setInput("");
@@ -144,10 +187,33 @@ export const AIHealthAssistant = ({ userId }: { userId: string }) => {
 
       if (error) {
         console.error("Function error:", error);
+        console.error("Error details:", {
+          message: error.message,
+          status: error.status,
+          context: error.context
+        });
+        
+        // Handle specific error types
+        if (error.status === 503 || error.message?.includes("503")) {
+          throw new Error("AI service is not configured. Please contact support.");
+        }
+        if (error.status === 429 || error.message?.includes("429")) {
+          throw new Error("Too many requests. Please try again later.");
+        }
+        if (error.status === 401 || error.status === 403) {
+          throw new Error("API authentication failed. Please check configuration.");
+        }
+        if (error.status === 400) {
+          throw new Error("Invalid request format. Please try again.");
+        }
+        if (error.message?.includes("timeout") || error.message?.includes("504")) {
+          throw new Error("AI service is taking too long to respond. Please try again.");
+        }
         throw new Error(error.message || "Failed to get AI response");
       }
 
       if (!data || !data.message) {
+        console.error("Invalid response data:", data);
         throw new Error("Invalid response from AI service");
       }
 
@@ -170,13 +236,22 @@ export const AIHealthAssistant = ({ userId }: { userId: string }) => {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, userId, conversationId, saveMessage]);
+  }, [input, loading, userId, conversationId, saveMessage, useN8nChat]);
 
   // Show error message if userId is not provided
   if (!userId) {
     return (
       <div className="flex flex-col h-full p-6 items-center justify-center">
         <p className="text-muted-foreground">User ID is required to use the AI assistant.</p>
+      </div>
+    );
+  }
+
+  // If n8n chat is initialized, show the n8n container
+  if (useN8nChat) {
+    return (
+      <div className="flex flex-col h-full bg-background">
+        <div ref={n8nContainerRef} className="flex-1 w-full" />
       </div>
     );
   }

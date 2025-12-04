@@ -86,15 +86,16 @@ export const PatientQRCode = ({ patient }: { patient: PatientData }) => {
   };
 
   return (
-    <div className="flex gap-2">
+    <div className="w-full md:w-auto">
       <Dialog>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
-            <QrCode className="h-4 w-4 mr-2" />
-            Generate QR Code
+          <Button variant="outline" size="sm" className="w-full md:w-auto text-xs md:text-sm">
+            <QrCode className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">Generate QR Code</span>
+            <span className="inline sm:hidden">QR</span>
           </Button>
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-md p-4 md:p-6">
           <DialogHeader>
             <DialogTitle>Patient QR Code</DialogTitle>
             <DialogDescription>
@@ -102,11 +103,11 @@ export const PatientQRCode = ({ patient }: { patient: PatientData }) => {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4 py-4">
-            <div className="p-6 bg-white rounded-lg border-2 border-gray-200">
+            <div className="p-4 md:p-6 bg-white rounded-lg border-2 border-gray-200 w-full flex items-center justify-center">
               <QRCodeSVG
                 id="patient-qr-code"
                 value={patientDataString}
-                size={320}
+                size={Math.min(280, window.innerWidth - 80)}
                 level="H"
                 includeMargin={true}
                 marginSize={4}

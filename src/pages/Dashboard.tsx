@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Menu, X } from "lucide-react";
+import { Activity, Menu, X, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { User, Session } from "@supabase/supabase-js";
@@ -12,6 +12,7 @@ import { RecordsUpload } from "@/components/dashboard/RecordsUpload";
 import { AvailableDoctors } from "@/components/dashboard/AvailableDoctors";
 import { PatientAppointments } from "@/components/dashboard/PatientAppointments";
 import { PatientAppointmentHistory } from "@/components/dashboard/PatientAppointmentHistory";
+import { EmergencyBookingDialog } from "@/components/dashboard/EmergencyBookingDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ const Dashboard = () => {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [emergencyDialogOpen, setEmergencyDialogOpen] = useState(false);
   const [stats, setStats] = useState({
     medications: 0,
     events: 0,
@@ -102,7 +104,14 @@ const Dashboard = () => {
       if (event === 'TOKEN_REFRESHED' && !session) {
         // Token refresh failed, sign out
         console.warn('Token refresh failed, signing out');
+        localStorage.removeItem('sb-wvhlrmsugmcdhsaltygg-auth-token');
         await supabase.auth.signOut();
+        navigate("/auth");
+      } else if (event === 'SIGNED_OUT' || !session) {
+        // Session ended
+        console.log('Session ended, redirecting to auth');
+        setUser(null);
+        setSession(null);
         navigate("/auth");
       } else {
         checkUserSession(session);
@@ -130,19 +139,39 @@ const Dashboard = () => {
         .select("*", { count: "exact", head: true })
         .eq("user_id", userId);
 
-      // Count upcoming approved appointments for this patient (appointment_date >= now)
-      const now = new Date().toISOString();
-      const { count: appointmentCount } = await supabase
+      // Count upcoming appointments (pending and approved that haven't passed)
+      // Note: We fetch and filter client-side to match PatientAppointments behavior
+      const { data: appointmentsData } = await supabase
         .from("appointments")
+        .select("*", { count: "exact" })
+        .eq("patient_id", userId)
+        .in("status", ["pending", "approved"]);
+
+      // Get current IST time for filtering
+      const now = new Date();
+      const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+      const istNow = new Date(now.getTime() + istOffset - (now.getTimezoneOffset() * 60 * 1000));
+
+      // Filter out appointments that have passed
+      const upcomingAppointments = appointmentsData?.filter(apt => {
+        const aptDate = new Date(apt.appointment_date);
+        return aptDate >= istNow;
+      }) || [];
+
+      // Count emergency bookings (pending only - approved go to history)
+      // @ts-ignore
+      const { count: emergencyCount } = await supabase
+        .from("emergency_bookings")
         .select("*", { count: "exact", head: true })
         .eq("patient_id", userId)
-        .eq("status", "approved")
-        .gte("appointment_date", now);
+        .eq("status", "pending");
+
+      const totalAppointments = (upcomingAppointments.length || 0) + (emergencyCount || 0);
 
       setStats({
         medications: medCount || 0,
         events: eventCount || 0,
-        appointments: appointmentCount || 0,
+        appointments: totalAppointments,
       });
     } catch (error) {
       console.error("Error loading stats:", error);
@@ -298,6 +327,32 @@ const Dashboard = () => {
               <StatsCard title="Appointments" value={stats.appointments.toString()} subtitle="Approved appointments" />
             </div>
 
+            {/* Emergency Booking Section */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8 p-6 rounded-lg bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/20 dark:to-orange-950/20 border border-red-200/50">
+              <div>
+                <h3 className="text-2xl font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
+                  <AlertTriangle className="h-6 w-6" />
+                  Emergency Booking
+                </h3>
+                <p className="text-red-600 dark:text-red-300">Need urgent consultation? Request emergency appointment immediately</p>
+              </div>
+              <Button
+                onClick={() => setEmergencyDialogOpen(true)}
+                className="bg-red-600 hover:bg-red-700 text-white whitespace-nowrap flex-shrink-0"
+              >
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                Request Emergency
+              </Button>
+            </div>
+
+            {/* Request Appointment Section */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+              <div>
+                <h3 className="text-2xl font-bold text-foreground mb-2">Request Regular Appointment</h3>
+                <p className="text-muted-foreground">Book scheduled appointments from available doctors</p>
+              </div>
+            </div>
+
             {/* Available Doctors */}
             <div>
               <AvailableDoctors patientId={user.id} />
@@ -332,6 +387,19 @@ const Dashboard = () => {
             <PatientAppointmentHistory patientId={user.id} />
           </TabsContent>
         </Tabs>
+
+        {/* Emergency Booking Dialog */}
+        <EmergencyBookingDialog
+          open={emergencyDialogOpen}
+          onOpenChange={setEmergencyDialogOpen}
+          patientId={user?.id || ""}
+          onBookingCreated={() => {
+            setEmergencyDialogOpen(false);
+            // Refresh appointments
+            const refreshEvent = new CustomEvent('refreshAppointments');
+            window.dispatchEvent(refreshEvent);
+          }}
+        />
       </div>
 
     </div>

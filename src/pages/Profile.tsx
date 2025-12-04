@@ -171,15 +171,15 @@ const Profile = () => {
           Back to Dashboard
         </Button>
 
-        <Card className="p-8">
-          <div className="flex items-center justify-between mb-8">
+        <Card className="p-6 md:p-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
             <div>
-              <h1 className="text-3xl font-bold">My Profile</h1>
+              <h1 className="text-2xl md:text-3xl font-bold">My Profile</h1>
               <p className="text-muted-foreground mt-1">
                 {userRole === "patient" ? "Patient Profile" : userRole === "doctor" ? "Doctor Profile" : "User Profile"}
               </p>
             </div>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving} className="w-full md:w-auto">
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

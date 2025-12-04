@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { hasAppointmentPassed, formatAppointmentDateIST, getCurrentISTTime } from "@/lib/istTimezone";
 
 interface Appointment {
   id: string;
@@ -26,6 +27,9 @@ interface Appointment {
   notes: string;
   patient_name?: string;
   patient_email?: string;
+  isEmergency?: boolean;
+  urgency_level?: string;
+  contact_number?: string;
 }
 
 export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
@@ -40,6 +44,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
 
   const fetchAppointments = async () => {
     try {
+      // Fetch regular pending appointments
       const { data: appointmentsData, error } = await supabase
         .from("appointments")
         .select("*")
@@ -49,14 +54,61 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
 
       if (error) throw error;
 
-      // Only show pending appointments that haven't expired
-      const now = new Date();
+      // Filter out pending appointments that have already passed (using IST)
       const validPendingAppointments = appointmentsData?.filter(apt => {
-        const aptDate = new Date(apt.appointment_date);
-        // Keep pending appointments even if time has passed (they still need to be reviewed)
-        return apt.status === "pending";
+        return !hasAppointmentPassed(apt.appointment_date);
       }) || [];
 
+      // Fetch emergency bookings (pending only - they have priority)
+      // @ts-ignore
+      const { data: emergencyData } = await supabase
+        .from("emergency_bookings")
+        .select("*")
+        .eq("doctor_id", doctorId)
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false });
+
+      let allAppointments: Appointment[] = [];
+
+      // Add emergency bookings first (higher priority)
+      if (emergencyData && emergencyData.length > 0) {
+        // Filter emergency bookings by scheduled_date (IST)
+        const validEmergencyBookings = emergencyData.filter((eb: any) => {
+          // Only show if scheduled_date exists and hasn't passed
+          if (!eb.scheduled_date) return true; // Show if no scheduled date yet
+          return !hasAppointmentPassed(eb.scheduled_date);
+        });
+
+        if (validEmergencyBookings.length > 0) {
+          const emergencyPatientIds = [...new Set(validEmergencyBookings.map((eb: any) => eb.patient_id))];
+          const { data: emergencyProfiles } = await supabase
+            .from("profiles")
+            .select("id, full_name, email")
+            .in("id", emergencyPatientIds);
+
+          const emergencyAppointments = validEmergencyBookings.map((eb: any) => {
+            const profile = emergencyProfiles?.find((p: any) => p.id === eb.patient_id);
+            return {
+              id: eb.id,
+              patient_id: eb.patient_id,
+              doctor_id: eb.doctor_id,
+              appointment_date: eb.scheduled_date || eb.requested_at,
+              status: eb.status,
+              reason: eb.reason,
+              notes: eb.doctor_notes || "",
+              patient_name: profile?.full_name || "Patient",
+              patient_email: profile?.email || "N/A",
+              isEmergency: true,
+              urgency_level: eb.urgency_level,
+              contact_number: eb.contact_number,
+            };
+          });
+
+          allAppointments = [...emergencyAppointments];
+        }
+      }
+
+      // Add regular pending appointments
       if (validPendingAppointments.length > 0) {
         const patientIds = validPendingAppointments.map((apt) => apt.patient_id);
         const { data: profiles, error: profileError } = await supabase
@@ -74,13 +126,14 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
             ...apt,
             patient_name: profile?.full_name || "Patient",
             patient_email: profile?.email || "N/A",
+            isEmergency: false,
           };
         });
 
-        setAppointments(enrichedAppointments);
-      } else {
-        setAppointments([]);
+        allAppointments = [...allAppointments, ...enrichedAppointments];
       }
+
+      setAppointments(allAppointments);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching appointments:", error);
@@ -93,11 +146,31 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
     try {
       const targetAppointment = appointment || selectedAppointment;
 
-      // Prevent cancellation if appointment time has passed
+      // Prevent cancellation if appointment time has passed (using IST)
+      // For emergency bookings, only check if scheduled_date exists and has passed
       if (status === "cancelled" && targetAppointment) {
-        if (new Date(targetAppointment.appointment_date) < new Date()) {
-          toast.error("Cannot cancel an appointment that has already passed");
-          return;
+        if (targetAppointment.isEmergency) {
+          // For emergency bookings, only check if there's a scheduled_date and it has passed
+          const hasScheduledDate = targetAppointment.appointment_date && 
+                                   targetAppointment.appointment_date !== targetAppointment.patient_id; // Ensure it's not just patient_id
+          
+          // Try to get the actual emergency booking to check scheduled_date
+          const { data: emergencyData } = await supabase
+            .from("emergency_bookings")
+            .select("scheduled_date, requested_at")
+            .eq("id", appointmentId)
+            .maybeSingle();
+          
+          if (emergencyData?.scheduled_date && hasAppointmentPassed(emergencyData.scheduled_date)) {
+            toast.error("Cannot cancel an appointment that has already passed");
+            return;
+          }
+        } else {
+          // For regular appointments, check the appointment_date
+          if (hasAppointmentPassed(targetAppointment.appointment_date)) {
+            toast.error("Cannot cancel an appointment that has already passed");
+            return;
+          }
         }
       }
       
@@ -128,12 +201,15 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
         }
       }
 
+      // Determine which table to update (emergency_bookings or appointments)
+      const tableName = targetAppointment?.isEmergency ? "emergency_bookings" : "appointments";
+      
       // Update appointment status
       const { error } = await supabase
-        .from("appointments")
+        .from(tableName)
         .update({
           status,
-          notes: status === "cancelled" ? "" : doctorNotes,
+          doctor_notes: status === "cancelled" ? "" : doctorNotes,
           updated_at: new Date().toISOString()
         })
         .eq("id", appointmentId);
@@ -162,15 +238,15 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
           const notificationMessages = {
             approved: {
               title: 'Appointment approved',
-              message: `Your appointment on ${new Date(targetAppointment.appointment_date).toLocaleString()} has been approved.`,
+              message: `Your appointment on ${formatAppointmentDateIST(targetAppointment.appointment_date)} has been approved.`,
             },
             cancelled: {
               title: 'Appointment cancelled',
-              message: `Your appointment on ${new Date(targetAppointment.appointment_date).toLocaleString()} has been cancelled.`,
+              message: `Your appointment on ${formatAppointmentDateIST(targetAppointment.appointment_date)} has been cancelled.`,
             },
             rejected: {
               title: 'Appointment rejected',
-              message: `Your appointment request for ${new Date(targetAppointment.appointment_date).toLocaleString()} has been rejected.`,
+              message: `Your appointment request for ${formatAppointmentDateIST(targetAppointment.appointment_date)} has been rejected.`,
             },
           };
           
@@ -220,6 +296,26 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
     return badges[status as keyof typeof badges] || <Badge>{status}</Badge>;
   };
 
+  const getUrgencyBadge = (urgency: string) => {
+    // Map any old urgency levels to valid ones
+    let normalizedUrgency = urgency?.toLowerCase() || "high";
+    if (normalizedUrgency === "medium" || normalizedUrgency === "low") {
+      normalizedUrgency = "high";
+    }
+    
+    const urgencyBadges: { [key: string]: string } = {
+      critical: "bg-red-600 text-white",
+      high: "bg-orange-500 text-white",
+    };
+    const className = urgencyBadges[normalizedUrgency] || "bg-orange-500 text-white";
+    return (
+      <Badge className={`${className} gap-1 uppercase text-xs font-bold`}>
+        <AlertTriangle className="h-3 w-3" />
+        {normalizedUrgency}
+      </Badge>
+    );
+  };
+
   if (loading) {
     return <Card className="p-6"><p className="text-muted-foreground">Loading appointments...</p></Card>;
   }
@@ -252,31 +348,51 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
                   </TableHeader>
                   <TableBody>
                     {appointments.map((apt) => (
-                      <TableRow key={apt.id}>
-                        <TableCell className="font-medium">{apt.patient_name}</TableCell>
+                      <TableRow 
+                        key={apt.id}
+                      >
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {apt.isEmergency && <AlertTriangle className="h-4 w-4 text-red-600" />}
+                            {apt.patient_name}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-muted-foreground" />
-                            {new Date(apt.appointment_date).toLocaleString()}
+                            {formatAppointmentDateIST(apt.appointment_date)}
+                          </div>
+                          {apt.isEmergency && apt.contact_number && (
+                            <div className="text-xs text-muted-foreground mt-1">📱 {apt.contact_number}</div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            {apt.reason || "N/A"}
+                            {apt.isEmergency && apt.urgency_level && (
+                              <div className="mt-1">{getUrgencyBadge(apt.urgency_level)}</div>
+                            )}
                           </div>
                         </TableCell>
-                        <TableCell>{apt.reason || "N/A"}</TableCell>
-                        <TableCell>{getStatusBadge(apt.status)}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            {getStatusBadge(apt.status)}
+                            {apt.isEmergency && <Badge variant="destructive" className="w-fit text-xs">🚨 EMERGENCY</Badge>}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           {apt.status === "pending" ? (
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="default"
-                                onClick={() => {
-                                  setSelectedAppointment(apt);
-                                  setDoctorNotes(apt.notes || "");
-                                }}
-                              >
-                                Review
-                              </Button>
-                            </div>
-                          ) : apt.status === "approved" && new Date(apt.appointment_date) >= new Date() ? (
+                            <Button
+                              size="sm"
+                              variant={apt.isEmergency ? "destructive" : "default"}
+                              onClick={() => {
+                                setSelectedAppointment(apt);
+                                setDoctorNotes(apt.notes || "");
+                              }}
+                            >
+                              Review
+                            </Button>
+                          ) : apt.status === "approved" && !hasAppointmentPassed(apt.appointment_date) ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -285,7 +401,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
                             >
                               Cancel
                             </Button>
-                          ) : apt.status === "approved" && new Date(apt.appointment_date) < new Date() ? (
+                          ) : apt.status === "approved" && hasAppointmentPassed(apt.appointment_date) ? (
                             <Badge variant="outline">Time Passed</Badge>
                           ) : (
                             <span className="text-xs text-muted-foreground">-</span>
@@ -300,17 +416,29 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
               {/* Mobile Card View */}
               <div className="md:hidden space-y-3">
                 {appointments.map((apt) => (
-                  <Card key={apt.id} className="p-4 transition-all duration-200 active:scale-[0.98] touch-manipulation">
+                  <Card 
+                    key={apt.id} 
+                    className={`p-4 transition-all duration-200 active:scale-[0.98] touch-manipulation border-l-4 ${apt.isEmergency ? "bg-red-50 border-l-red-600" : "border-l-transparent"}`}
+                  >
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-base mb-1">{apt.patient_name}</h4>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Clock className="h-3 w-3 flex-shrink-0" />
-                            <span className="text-xs">{new Date(apt.appointment_date).toLocaleString()}</span>
+                          <div className="flex items-center gap-2">
+                            {apt.isEmergency && <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0" />}
+                            <h4 className="font-semibold text-base">{apt.patient_name}</h4>
                           </div>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                            <Clock className="h-3 w-3 flex-shrink-0" />
+                            <span className="text-xs">{formatAppointmentDateIST(apt.appointment_date)}</span>
+                          </div>
+                          {apt.isEmergency && apt.contact_number && (
+                            <div className="text-xs text-muted-foreground mt-1">📱 {apt.contact_number}</div>
+                          )}
                         </div>
-                        {getStatusBadge(apt.status)}
+                        <div className="flex flex-col gap-1">
+                          {getStatusBadge(apt.status)}
+                          {apt.isEmergency && <Badge variant="destructive" className="text-xs">🚨 EMERGENCY</Badge>}
+                        </div>
                       </div>
                       
                       {apt.reason && (
@@ -320,11 +448,18 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
                         </div>
                       )}
 
+                      {apt.isEmergency && apt.urgency_level && (
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">Urgency: </span>
+                          {getUrgencyBadge(apt.urgency_level)}
+                        </div>
+                      )}
+
                       <div className="flex gap-2 pt-2">
                         {apt.status === "pending" ? (
                           <Button
                             size="sm"
-                            variant="default"
+                            variant={apt.isEmergency ? "destructive" : "default"}
                             onClick={() => {
                               setSelectedAppointment(apt);
                               setDoctorNotes(apt.notes || "");
@@ -333,7 +468,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
                           >
                             Review
                           </Button>
-                        ) : apt.status === "approved" && new Date(apt.appointment_date) >= new Date() ? (
+                        ) : apt.status === "approved" && !hasAppointmentPassed(apt.appointment_date) ? (
                           <Button
                             size="sm"
                             variant="outline"
@@ -342,7 +477,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
                           >
                             Cancel
                           </Button>
-                        ) : apt.status === "approved" && new Date(apt.appointment_date) < new Date() ? (
+                        ) : apt.status === "approved" && hasAppointmentPassed(apt.appointment_date) ? (
                           <Badge variant="outline">Time Passed</Badge>
                         ) : null}
                       </div>
@@ -364,7 +499,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
             <div>
               <p className="text-sm text-muted-foreground">Patient: {selectedAppointment.patient_name}</p>
               <p className="text-sm text-muted-foreground">
-                Date: {new Date(selectedAppointment.appointment_date).toLocaleString()}
+                Date: {formatAppointmentDateIST(selectedAppointment.appointment_date)}
               </p>
               <p className="text-sm text-muted-foreground">Reason: {selectedAppointment.reason}</p>
             </div>
