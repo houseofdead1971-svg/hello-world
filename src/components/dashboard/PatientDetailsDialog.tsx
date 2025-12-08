@@ -61,7 +61,7 @@ export function PatientDetailsDialog({
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data: profile, error } = await supabase
+          const { data: profile, error } = await (supabase as any)
             .from("profiles")
             .select("full_name")
             .eq("id", user.id)

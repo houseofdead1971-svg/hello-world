@@ -39,7 +39,7 @@ export const PatientEmergencyBookings = ({ patientId }: PatientEmergencyBookings
     try {
       setLoading(true);
       // @ts-ignore - emergency_bookings table added via migration
-      const { data: bookingsData, error: bookingsError } = await supabase
+      const { data: bookingsData, error: bookingsError } = await (supabase as any)
         .from("emergency_bookings")
         .select("id, doctor_id, status, urgency_level, reason, requested_at, responded_at, doctor_notes")
         .eq("patient_id", patientId)
@@ -59,16 +59,16 @@ export const PatientEmergencyBookings = ({ patientId }: PatientEmergencyBookings
       const doctorIds = [...new Set(bookingsData.map((b: any) => b.doctor_id))];
 
       // Fetch doctor profiles
-      const { data: doctorProfilesData } = await supabase
+      const { data: doctorProfilesData } = await (supabase as any)
         .from("doctor_profiles")
         .select("user_id, specialization")
-        .in("user_id", doctorIds);
+        .in("user_id", doctorIds as string[]);
 
       // Fetch doctor names from profiles
-      const { data: profilesData } = await supabase
+      const { data: profilesData } = await (supabase as any)
         .from("profiles")
         .select("id, full_name")
-        .in("id", doctorIds);
+        .in("id", doctorIds as string[]);
 
       // Create maps for quick lookup
       const doctorProfileMap = new Map(

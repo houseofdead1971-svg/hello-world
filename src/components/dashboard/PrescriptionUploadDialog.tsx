@@ -113,7 +113,7 @@ export const PrescriptionUploadDialog = ({
       }
 
       // Query doctor_profiles by user_id using maybeSingle to handle missing data gracefully
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("doctor_profiles")
         .select("license_number, specialization")
         .eq("user_id", user.id)
@@ -254,7 +254,7 @@ export const PrescriptionUploadDialog = ({
       }
 
       // Insert prescription record with doctor information
-      const { error: insertError } = await supabase
+      const { error: insertError } = await (supabase as any)
         .from("prescriptions")
         .insert([
           {
@@ -330,7 +330,7 @@ export const PrescriptionUploadDialog = ({
     if (!window.confirm("Are you sure you want to delete this prescription?")) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("prescriptions")
         .delete()
         .eq("id", prescriptionId);

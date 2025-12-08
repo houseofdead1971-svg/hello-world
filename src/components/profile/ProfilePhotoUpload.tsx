@@ -124,7 +124,7 @@ export const ProfilePhotoUpload = ({
         .getPublicUrl(fileName);
 
       // Update profile with new avatar URL
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from("profiles")
         .update({ avatar_url: publicUrl })
         .eq("id", userId);
@@ -174,7 +174,7 @@ export const ProfilePhotoUpload = ({
                   if (oldPath) {
                     await supabase.storage.from("avatars").remove([`${userId}/${oldPath}`]);
                   }
-                  await supabase
+                  await (supabase as any)
                     .from("profiles")
                     .update({ avatar_url: null })
                     .eq("id", userId);

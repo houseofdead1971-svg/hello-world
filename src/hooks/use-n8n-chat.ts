@@ -103,6 +103,7 @@ export const useN8nChat = () => {
     const initializeChat = async () => {
       try {
         // Import the createChat function dynamically
+        // @ts-ignore - External CDN module
         const { createChat } = await import('https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js');
         
         // Initialize n8n chat with Mayur as agent name and theme colors

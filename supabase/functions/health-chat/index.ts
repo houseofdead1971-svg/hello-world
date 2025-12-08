@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
           }
         ]
       },
-      ...messages.map((msg) => ({
+      ...messages.map((msg: { role: string; content: string }) => ({
         role: msg.role === "assistant" ? "model" : "user",
         parts: [
           {

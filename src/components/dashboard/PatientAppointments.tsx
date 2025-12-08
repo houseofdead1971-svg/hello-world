@@ -36,6 +36,7 @@ interface EmergencyBooking {
   responded_at?: string;
   doctor_name?: string;
   isEmergency: true;
+  appointment_date?: string;
 }
 
 type AnyAppointment = Appointment | EmergencyBooking;
@@ -133,7 +134,7 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
       const now = getCurrentISTTime();
       
       // Fetch regular appointments
-      const { data: appointmentsData, error: apptError } = await supabase
+      const { data: appointmentsData, error: apptError } = await (supabase as any)
         .from("appointments")
         .select("*")
         .eq("patient_id", patientId)
@@ -143,7 +144,7 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
       if (apptError) throw apptError;
 
       // Filter out appointments that have passed
-      const upcomingAppointments = appointmentsData?.filter(apt => {
+      const upcomingAppointments = (appointmentsData as any[])?.filter((apt: any) => {
         const aptDate = new Date(apt.appointment_date);
         if ((apt.status === "pending" || apt.status === "approved") && aptDate < now) {
           return false;
@@ -152,8 +153,7 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
       }) || [];
 
       // Fetch emergency bookings - Show pending and approved (only pending shown here, approved go to history)
-      // @ts-ignore - emergency_bookings table added via migration
-      const { data: emergencyData, error: emergencyError } = await supabase
+      const { data: emergencyData, error: emergencyError } = await (supabase as any)
         .from("emergency_bookings")
         .select("*")
         .eq("patient_id", patientId)
@@ -181,8 +181,8 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
 
       // Add emergency bookings first (higher priority)
       if (validPendingEmergency && validPendingEmergency.length > 0) {
-        const emergencyDoctorIds = [...new Set(validPendingEmergency.map((eb: any) => eb.doctor_id))];
-        const { data: doctorProfiles } = await supabase
+        const emergencyDoctorIds = [...new Set(validPendingEmergency.map((eb: any) => eb.doctor_id))] as string[];
+        const { data: doctorProfiles } = await (supabase as any)
           .from("profiles")
           .select("id, full_name")
           .in("id", emergencyDoctorIds);
@@ -197,7 +197,7 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
           requested_at: eb.requested_at,
           responded_at: eb.responded_at,
           appointment_date: eb.scheduled_date || eb.responded_at || eb.requested_at,
-          doctor_name: doctorProfiles?.find((doc: any) => doc.id === eb.doctor_id)?.full_name || "Unknown Doctor",
+          doctor_name: (doctorProfiles as any[])?.find((doc: any) => doc.id === eb.doctor_id)?.full_name || "Unknown Doctor",
           isEmergency: true as const,
         }));
 
@@ -206,8 +206,8 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
 
       // Add regular appointments
       if (upcomingAppointments.length > 0) {
-        const doctorIds = [...new Set(upcomingAppointments.map((apt) => apt.doctor_id))];
-        const { data: profiles, error: profileError } = await supabase
+        const doctorIds = [...new Set(upcomingAppointments.map((apt: any) => apt.doctor_id))];
+        const { data: profiles, error: profileError } = await (supabase as any)
           .from("profiles")
           .select("id, full_name")
           .in("id", doctorIds);
@@ -216,8 +216,8 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
           console.error("Error fetching doctor profiles:", profileError);
         }
 
-        const enrichedAppointments = upcomingAppointments.map((apt) => {
-          const profile = profiles?.find((p) => p.id === apt.doctor_id);
+        const enrichedAppointments = upcomingAppointments.map((apt: any) => {
+          const profile = (profiles as any[])?.find((p: any) => p.id === apt.doctor_id);
           return {
             ...apt,
             doctor_name: profile?.full_name || "Dr. (Name not available)",
@@ -245,7 +245,7 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
 
     try {
       // First get the appointment details to find the doctor
-      const { data: appointment, error: fetchError } = await supabase
+      const { data: appointment, error: fetchError } = await (supabase as any)
         .from("appointments")
         .select("*, doctor_id")
         .eq("id", appointmentId)
@@ -253,7 +253,7 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
 
       if (fetchError) throw fetchError;
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("appointments")
         .update({ status: "cancelled" })
         .eq("id", appointmentId);
@@ -437,10 +437,10 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
                         </div>
                       )}
 
-                      {('notes' in apt && apt.notes) || ('doctor_notes' in apt && apt.doctor_notes) && (
+                      {(('notes' in apt && apt.notes) || ('doctor_notes' in apt && apt.doctor_notes)) && (
                         <div className="text-xs text-muted-foreground">
                           <span className="font-medium">Notes: </span>
-                          <span>{'notes' in apt ? apt.notes : ('doctor_notes' in apt ? apt.doctor_notes : '')}</span>
+                          <span>{('notes' in apt ? apt.notes : ('doctor_notes' in apt ? apt.doctor_notes : '')) as string}</span>
                         </div>
                       )}
 

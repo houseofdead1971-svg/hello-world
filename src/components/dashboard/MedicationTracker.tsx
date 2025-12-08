@@ -129,7 +129,7 @@ export const MedicationTracker = ({ userId }: { userId: string }) => {
       }
       toast.success("Medication updated");
     } else {
-      const { error } = await supabase.from("medications").insert({
+      const { error } = await (supabase as any).from("medications").insert({
         user_id: userId,
         name: formData.name,
         dosage: formData.dosage,
@@ -160,7 +160,7 @@ export const MedicationTracker = ({ userId }: { userId: string }) => {
   };
 
   const handleMarkTaken = async (medicationId: string) => {
-    const { error } = await supabase.from("medication_logs").insert({
+    const { error } = await (supabase as any).from("medication_logs").insert({
       user_id: userId,
       medication_id: medicationId,
       taken_at: new Date().toISOString(),
@@ -176,7 +176,7 @@ export const MedicationTracker = ({ userId }: { userId: string }) => {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("medications")
       .update({ active: false })
       .eq("id", id);

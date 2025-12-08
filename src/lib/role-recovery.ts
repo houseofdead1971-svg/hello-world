@@ -24,7 +24,7 @@ export async function recoverUserRole(userId: string): Promise<RoleRecoveryResul
     console.log('[RoleRecovery] Starting recovery for user:', userId);
 
     // Step 1: Check if role exists (handle multiple rows gracefully)
-    const { data: existingRoles, error: roleError } = await supabase
+    const { data: existingRoles, error: roleError } = await (supabase as any)
       .from('user_roles')
       .select('id, role')
       .eq('user_id', userId);
@@ -42,9 +42,9 @@ export async function recoverUserRole(userId: string): Promise<RoleRecoveryResul
       if (existingRoles.length > 1) {
         console.warn('[RoleRecovery] Found multiple role entries for user, cleaning up...');
         // Keep the first one and delete the rest
-        const idsToDelete = existingRoles.slice(1).map(r => r.id);
+        const idsToDelete = (existingRoles as any[]).slice(1).map((r: any) => r.id);
         for (const id of idsToDelete) {
-          const { error: deleteError } = await supabase.from('user_roles').delete().eq('id', id);
+          const { error: deleteError } = await (supabase as any).from('user_roles').delete().eq('id', id);
           if (deleteError) {
             console.error('[RoleRecovery] Error deleting duplicate:', deleteError);
           }
@@ -52,7 +52,7 @@ export async function recoverUserRole(userId: string): Promise<RoleRecoveryResul
         console.log('[RoleRecovery] Cleaned up', idsToDelete.length, 'duplicate role entries');
       }
       
-      const role = existingRoles[0].role;
+      const role = (existingRoles as any[])[0].role;
       console.log('[RoleRecovery] Role found:', role);
       return {
         success: true,
@@ -65,7 +65,7 @@ export async function recoverUserRole(userId: string): Promise<RoleRecoveryResul
     console.log('[RoleRecovery] No role found, checking profile for role inference...');
 
     // Check if user has a doctor_profiles record - if so, they're a doctor
-    const { data: doctorProfileExists, error: doctorCheckError } = await supabase
+    const { data: doctorProfileExists, error: doctorCheckError } = await (supabase as any)
       .from('doctor_profiles')
       .select('id')
       .eq('user_id', userId)
@@ -87,7 +87,7 @@ export async function recoverUserRole(userId: string): Promise<RoleRecoveryResul
     // Step 3: Assign the role
     console.log('[RoleRecovery] Assigning role:', inferredRole);
 
-    const { error: assignError } = await supabase
+    const { error: assignError } = await (supabase as any)
       .from('user_roles')
       .insert([{ user_id: userId, role: inferredRole }]);
 

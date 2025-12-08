@@ -78,7 +78,7 @@ export const EmergencyRequests = ({ doctorId }: EmergencyRequestsProps) => {
         .in("id", patientIds);
 
       // Create map for quick lookup
-      const profileMap = new Map(
+      const profileMap = new Map<string, { full_name: string; email: string }>(
         profilesData?.map((p: any) => [
           p.id,
           { full_name: p.full_name, email: p.email },

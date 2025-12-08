@@ -231,7 +231,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
 
   const fetchPatientInfo = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("profiles")
         .select("full_name, email")
         .eq("id", patientId)
@@ -253,7 +253,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       setLoading(true);
       
       // Fetch regular appointments
-      const { data: appointments, error: apptError } = await supabase
+      const { data: appointments, error: apptError } = await (supabase as any)
         .from("appointments")
         .select("*")
         .eq("patient_id", patientId)
@@ -263,9 +263,8 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       if (apptError) throw apptError;
 
       // Fetch ALL emergency bookings (not just completed) to show history
-      // @ts-ignore - emergency_bookings table added via migration
-      let emergencyBookings = [];
-      const { data: emergencyData, error: emergencyError } = await supabase
+      let emergencyBookings: any[] = [];
+      const { data: emergencyData, error: emergencyError } = await (supabase as any)
         .from("emergency_bookings")
         .select("id, doctor_id, status, urgency_level, reason, responded_at, scheduled_date, doctor_notes, requested_at, created_at")
         .eq("patient_id", patientId)
@@ -291,7 +290,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       // Add emergency bookings to history
       if (emergencyBookings && emergencyBookings.length > 0) {
         const emergencyDoctorIds = [...new Set(emergencyBookings.map(eb => eb.doctor_id))];
-        const { data: doctorProfiles } = await supabase
+        const { data: doctorProfiles } = await (supabase as any)
           .from("profiles")
           .select("id, full_name")
           .in("id", emergencyDoctorIds);
@@ -304,7 +303,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
           status: eb.status === 'rejected' ? 'cancelled' : eb.status, // Normalize status for UI
           reason: eb.reason,
           notes: eb.doctor_notes,
-          doctor_name: doctorProfiles?.find(doc => doc.id === eb.doctor_id)?.full_name || "Unknown Doctor",
+          doctor_name: (doctorProfiles as any[])?.find((doc: any) => doc.id === eb.doctor_id)?.full_name || "Unknown Doctor",
           isEmergencyBooking: true,
           urgency_level: eb.urgency_level,
         }));
@@ -321,14 +320,14 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       const appointmentsNeedingDoctors = allAppointments.filter(apt => !apt.doctor_name);
       if (appointmentsNeedingDoctors.length > 0) {
         const doctorIds = [...new Set(appointmentsNeedingDoctors.map(apt => apt.doctor_id))];
-        const { data: doctorProfiles } = await supabase
+        const { data: doctorProfiles } = await (supabase as any)
           .from("profiles")
           .select("id, full_name")
           .in("id", doctorIds);
 
         allAppointments = allAppointments.map(apt => ({
           ...apt,
-          doctor_name: apt.doctor_name || doctorProfiles?.find(doc => doc.id === apt.doctor_id)?.full_name || "Unknown Doctor"
+          doctor_name: apt.doctor_name || (doctorProfiles as any[])?.find((doc: any) => doc.id === apt.doctor_id)?.full_name || "Unknown Doctor"
         }));
       }
 
@@ -345,7 +344,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
 
   const fetchFeedbacks = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("appointment_feedback")
         .select("*")
         .eq("patient_id", patientId);
@@ -353,8 +352,8 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       if (error) throw error;
 
       const feedbackMap: Record<string, Feedback> = {};
-      data?.forEach((feedback) => {
-        feedbackMap[feedback.appointment_id] = feedback;
+      (data as any[])?.forEach((feedback: any) => {
+        feedbackMap[feedback.appointment_id] = feedback as Feedback;
       });
       setFeedbacks(feedbackMap);
     } catch (error) {
@@ -365,7 +364,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
   const fetchPrescriptions = async () => {
     try {
       // Fetch all prescriptions for this patient
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("prescriptions")
         .select(`
           id,
@@ -400,8 +399,8 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       console.log("[fetchPrescriptions] Fetched prescriptions:", data.length);
 
       // Collect all unique doctor IDs from prescriptions that don't have doctor info
-      const prescriptionsNeedingDoctorInfo = data.filter(p => !p.doctor_name || !p.doctor_license);
-      const doctorIds = [...new Set(prescriptionsNeedingDoctorInfo.map(p => p.doctor_id).filter(Boolean))];
+      const prescriptionsNeedingDoctorInfo = (data as any[]).filter((p: any) => !p.doctor_name || !p.doctor_license);
+      const doctorIds = [...new Set(prescriptionsNeedingDoctorInfo.map((p: any) => p.doctor_id).filter(Boolean))];
       
       let doctorProfiles: any[] = [];
       let doctorNames: any[] = [];
@@ -409,11 +408,11 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       // Only fetch doctor info if we have prescriptions missing it
       if (doctorIds.length > 0) {
         const [{ data: profiles = [], error: profileError }, { data: names = [], error: nameError }] = await Promise.all([
-          supabase
+          (supabase as any)
             .from("doctor_profiles")
             .select("user_id, specialization, license_number")
             .in("user_id", doctorIds),
-          supabase
+          (supabase as any)
             .from("profiles")
             .select("id, full_name")
             .in("id", doctorIds)
@@ -431,15 +430,15 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       }
 
       // For each prescription, attach doctor info if missing
-      const prescriptionsWithDoctorInfo = (data || []).map(prescription => {
+      const prescriptionsWithDoctorInfo = ((data || []) as any[]).map((prescription: any) => {
         // Use stored info if available, otherwise fetch from doctor profiles
         let doctorName = prescription.doctor_name;
         let doctorLicense = prescription.doctor_license;
         let doctorSpecialization = prescription.doctor_specialization;
 
         if (!doctorName || !doctorLicense) {
-          const doctorProfile = doctorProfiles?.find(dp => dp.user_id === prescription.doctor_id);
-          const doctorNameRecord = doctorNames?.find(dn => dn.id === prescription.doctor_id);
+          const doctorProfile = doctorProfiles?.find((dp: any) => dp.user_id === prescription.doctor_id);
+          const doctorNameRecord = doctorNames?.find((dn: any) => dn.id === prescription.doctor_id);
           
           doctorName = doctorName || doctorNameRecord?.full_name || "Unknown Doctor";
           doctorLicense = doctorLicense || doctorProfile?.license_number || "N/A";
@@ -513,7 +512,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
     try {
       console.log("[getDoctorProfile] Fetching doctor profile for:", doctorId);
       
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("doctor_profiles")
         .select("specialization, license_number")
         .eq("user_id", doctorId)
@@ -623,7 +622,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-0.5 flex-wrap">
                           <p className="text-xs sm:text-sm font-medium group-hover:text-primary transition-colors truncate">{appointment.doctor_name}</p>
-                          {(appointment.isEmergency || appointment.isEmergencyBooking) && appointment.urgency_level && (
+                          {(appointment as any).isEmergency || (appointment as any).isEmergencyBooking && appointment.urgency_level && (
                             <span className="flex-shrink-0">{getUrgencyBadge(appointment.urgency_level)}</span>
                           )}
                         </div>
@@ -758,7 +757,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
                             <Button
                               size="sm"
                               variant="outline"
-                              className="w-full sm:w-auto text-xs h-8"
+                              className="w-full sm:w-auto text-xs h-8 border-primary/20 hover:bg-primary/10"
                               onClick={() =>
                                 setFeedbackDialog({
                                   open: true,
@@ -767,7 +766,6 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
                                   doctorName: appointment.doctor_name || "Doctor",
                                 })
                               }
-                              className="border-primary/20 hover:bg-primary/10"
                             >
                               Edit Feedback
                             </Button>
