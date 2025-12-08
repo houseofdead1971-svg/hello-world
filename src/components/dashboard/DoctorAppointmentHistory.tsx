@@ -167,7 +167,7 @@ export const DoctorAppointmentHistory = ({
       setLoading(true);
       
       // Fetch regular appointments
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("appointments")
         .select("*")
         .eq("doctor_id", doctorId)
@@ -177,8 +177,7 @@ export const DoctorAppointmentHistory = ({
       if (error) throw error;
 
       // Fetch approved emergency bookings
-      // @ts-ignore - emergency_bookings table added via migration
-      const { data: emergencyBookings, error: emergencyError } = await supabase
+      const { data: emergencyBookings, error: emergencyError } = await (supabase as any)
         .from("emergency_bookings")
         .select("id, patient_id, status, urgency_level, reason, responded_at, doctor_notes")
         .eq("doctor_id", doctorId)
@@ -192,13 +191,13 @@ export const DoctorAppointmentHistory = ({
 
       // Add approved emergency bookings as appointments
       if (emergencyBookings && emergencyBookings.length > 0) {
-        const emergencyPatientIds = [...new Set(emergencyBookings.map(eb => eb.patient_id))];
-        const { data: patientProfiles } = await supabase
+        const emergencyPatientIds = [...new Set((emergencyBookings as any[]).map((eb: any) => eb.patient_id))];
+        const { data: patientProfiles } = await (supabase as any)
           .from("profiles")
           .select("id, full_name, email")
           .in("id", emergencyPatientIds);
 
-        const emergencyAppointments = emergencyBookings.map(eb => ({
+        const emergencyAppointments = (emergencyBookings as any[]).map((eb: any) => ({
           id: eb.id,
           patient_id: eb.patient_id,
           doctor_id: doctorId,
@@ -206,8 +205,8 @@ export const DoctorAppointmentHistory = ({
           status: "approved",
           reason: eb.reason,
           notes: `Emergency - ${eb.urgency_level?.toUpperCase()} | ${eb.reason}`,
-          patient_name: patientProfiles?.find(p => p.id === eb.patient_id)?.full_name || "Unknown Patient",
-          patient_email: patientProfiles?.find(p => p.id === eb.patient_id)?.email || "",
+          patient_name: (patientProfiles as any[])?.find((p: any) => p.id === eb.patient_id)?.full_name || "Unknown Patient",
+          patient_email: (patientProfiles as any[])?.find((p: any) => p.id === eb.patient_id)?.email || "",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           is_emergency_booking: true,
@@ -225,15 +224,15 @@ export const DoctorAppointmentHistory = ({
       const appointmentsNeedingPatients = allAppointments.filter((apt: any) => !apt.patient_name);
       if (appointmentsNeedingPatients.length > 0) {
         const patientIds = [...new Set(appointmentsNeedingPatients.map((apt: any) => apt.patient_id))];
-        const { data: patientProfiles } = await supabase
+        const { data: patientProfiles } = await (supabase as any)
           .from("profiles")
           .select("id, full_name, email")
           .in("id", patientIds);
 
         allAppointments = allAppointments.map((apt: any) => ({
           ...apt,
-          patient_name: apt.patient_name || patientProfiles?.find(p => p.id === apt.patient_id)?.full_name || "Unknown Patient",
-          patient_email: apt.patient_email || patientProfiles?.find(p => p.id === apt.patient_id)?.email || ""
+          patient_name: apt.patient_name || (patientProfiles as any[])?.find((p: any) => p.id === apt.patient_id)?.full_name || "Unknown Patient",
+          patient_email: apt.patient_email || (patientProfiles as any[])?.find((p: any) => p.id === apt.patient_id)?.email || ""
         }));
       }
 
@@ -248,7 +247,7 @@ export const DoctorAppointmentHistory = ({
 
   const fetchFeedbacks = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("appointment_feedback")
         .select("*")
         .eq("doctor_id", doctorId);
@@ -256,8 +255,8 @@ export const DoctorAppointmentHistory = ({
       if (error) throw error;
 
       const feedbackMap: Record<string, Feedback> = {};
-      data?.forEach((feedback) => {
-        feedbackMap[feedback.appointment_id] = feedback;
+      (data as any[])?.forEach((feedback: any) => {
+        feedbackMap[feedback.appointment_id] = feedback as Feedback;
       });
       setFeedbacks(feedbackMap);
     } catch (error) {
@@ -267,7 +266,7 @@ export const DoctorAppointmentHistory = ({
 
   const fetchPrescriptions = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("prescriptions")
         .select("*")
         .eq("doctor_id", doctorId);
@@ -275,11 +274,11 @@ export const DoctorAppointmentHistory = ({
       if (error) throw error;
 
       const prescriptionMap: Record<string, Prescription[]> = {};
-      data?.forEach((prescription) => {
+      (data as any[])?.forEach((prescription: any) => {
         if (!prescriptionMap[prescription.appointment_id]) {
           prescriptionMap[prescription.appointment_id] = [];
         }
-        prescriptionMap[prescription.appointment_id].push(prescription);
+        prescriptionMap[prescription.appointment_id].push(prescription as Prescription);
       });
       setPrescriptions(prescriptionMap);
     } catch (error) {

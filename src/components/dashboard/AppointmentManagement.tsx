@@ -45,7 +45,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
   const fetchAppointments = async () => {
     try {
       // Fetch regular pending appointments
-      const { data: appointmentsData, error } = await supabase
+      const { data: appointmentsData, error } = await (supabase as any)
         .from("appointments")
         .select("*")
         .eq("doctor_id", doctorId)
@@ -55,13 +55,12 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
       if (error) throw error;
 
       // Filter out pending appointments that have already passed (using IST)
-      const validPendingAppointments = appointmentsData?.filter(apt => {
+      const validPendingAppointments = (appointmentsData as any[])?.filter((apt: any) => {
         return !hasAppointmentPassed(apt.appointment_date);
       }) || [];
 
       // Fetch emergency bookings (pending only - they have priority)
-      // @ts-ignore
-      const { data: emergencyData } = await supabase
+      const { data: emergencyData } = await (supabase as any)
         .from("emergency_bookings")
         .select("*")
         .eq("doctor_id", doctorId)
@@ -81,7 +80,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
 
         if (validEmergencyBookings.length > 0) {
           const emergencyPatientIds = [...new Set(validEmergencyBookings.map((eb: any) => eb.patient_id))];
-          const { data: emergencyProfiles } = await supabase
+          const { data: emergencyProfiles } = await (supabase as any)
             .from("profiles")
             .select("id, full_name, email")
             .in("id", emergencyPatientIds);
@@ -108,10 +107,9 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
         }
       }
 
-      // Add regular pending appointments
       if (validPendingAppointments.length > 0) {
-        const patientIds = validPendingAppointments.map((apt) => apt.patient_id);
-        const { data: profiles, error: profileError } = await supabase
+        const patientIds = validPendingAppointments.map((apt: any) => apt.patient_id);
+        const { data: profiles, error: profileError } = await (supabase as any)
           .from("profiles")
           .select("id, full_name, email")
           .in("id", patientIds);
@@ -120,8 +118,8 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
           console.error("Error fetching profiles:", profileError);
         }
 
-        const enrichedAppointments = validPendingAppointments.map((apt) => {
-          const profile = profiles?.find((p) => p.id === apt.patient_id);
+        const enrichedAppointments = validPendingAppointments.map((apt: any) => {
+          const profile = (profiles as any[])?.find((p: any) => p.id === apt.patient_id);
           return {
             ...apt,
             patient_name: profile?.full_name || "Patient",
@@ -155,13 +153,14 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
                                    targetAppointment.appointment_date !== targetAppointment.patient_id; // Ensure it's not just patient_id
           
           // Try to get the actual emergency booking to check scheduled_date
-          const { data: emergencyData } = await supabase
+          const { data: emergencyData } = await (supabase as any)
             .from("emergency_bookings")
             .select("scheduled_date, requested_at")
             .eq("id", appointmentId)
             .maybeSingle();
           
-          if (emergencyData?.scheduled_date && hasAppointmentPassed(emergencyData.scheduled_date)) {
+          const emergencyBooking = emergencyData as any;
+          if (emergencyBooking?.scheduled_date && hasAppointmentPassed(emergencyBooking.scheduled_date)) {
             toast.error("Cannot cancel an appointment that has already passed");
             return;
           }
@@ -176,7 +175,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
       
       // If approved, automatically assign patient to doctor first
       if (status === "approved" && targetAppointment) {
-        const { data: existingRelation } = await supabase
+        const { data: existingRelation } = await (supabase as any)
           .from("doctor_patients")
           .select("id")
           .eq("doctor_id", doctorId)
@@ -184,7 +183,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
           .maybeSingle();
 
         if (!existingRelation) {
-          const { error: assignError } = await supabase
+          const { error: assignError } = await (supabase as any)
             .from("doctor_patients")
             .insert({
               doctor_id: doctorId,
@@ -205,7 +204,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
       const tableName = targetAppointment?.isEmergency ? "emergency_bookings" : "appointments";
       
       // Update appointment status
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from(tableName)
         .update({
           status,

@@ -127,8 +127,7 @@ export const EmergencyBookingDialog = ({
 
     setIsSubmitting(true);
     try {
-      // @ts-ignore - emergency_bookings table added via migration
-      const { error } = await supabase.from("emergency_bookings").insert({
+      const { error } = await (supabase as any).from("emergency_bookings").insert({
         patient_id: patientId,
         doctor_id: selectedDoctor,
         reason: reason.trim(),

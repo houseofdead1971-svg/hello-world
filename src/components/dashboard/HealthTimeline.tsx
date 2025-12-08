@@ -49,7 +49,7 @@ export const HealthTimeline = ({ userId }: { userId: string }) => {
   }, [userId]);
 
   const loadEvents = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("health_timeline")
       .select("*")
       .eq("user_id", userId)
@@ -60,7 +60,7 @@ export const HealthTimeline = ({ userId }: { userId: string }) => {
       return;
     }
 
-    setEvents(data || []);
+    setEvents((data as TimelineEvent[]) || []);
   };
 
   const handleSubmit = async () => {
@@ -70,7 +70,7 @@ export const HealthTimeline = ({ userId }: { userId: string }) => {
     }
 
     if (editingEvent) {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("health_timeline")
         .update({
           title: formData.title,
@@ -86,7 +86,7 @@ export const HealthTimeline = ({ userId }: { userId: string }) => {
       }
       toast.success("Event updated successfully");
     } else {
-      const { error } = await supabase.from("health_timeline").insert({
+      const { error } = await (supabase as any).from("health_timeline").insert({
         user_id: userId,
         title: formData.title,
         description: formData.description || null,
@@ -113,7 +113,7 @@ export const HealthTimeline = ({ userId }: { userId: string }) => {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("health_timeline").delete().eq("id", id);
+    const { error } = await (supabase as any).from("health_timeline").delete().eq("id", id);
 
     if (error) {
       toast.error("Failed to delete event");

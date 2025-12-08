@@ -54,13 +54,13 @@ export const AvailableDoctors = ({ patientId }: { patientId: string }) => {
   const fetchDoctors = async () => {
     try {
       // Use the secure public_doctors view instead of direct profile access
-      const { data: doctors, error } = await supabase
+      const { data: doctors, error } = await (supabase as any)
         .from("public_doctors")
         .select("*");
 
       if (error) throw error;
 
-      setDoctors(doctors || []);
+      setDoctors((doctors as Doctor[]) || []);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching doctors:", error);
@@ -105,7 +105,7 @@ export const AvailableDoctors = ({ patientId }: { patientId: string }) => {
       // Create appointment date in IST
       const appointmentDateTime = new Date(`${appointmentDate}T${appointmentTime}`);
 
-      const { error } = await supabase.from("appointments").insert({
+      const { error } = await (supabase as any).from("appointments").insert({
         patient_id: patientId,
         doctor_id: selectedDoctor.id,
         appointment_date: appointmentDateTime.toISOString(),

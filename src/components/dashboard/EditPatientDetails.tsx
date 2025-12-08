@@ -40,13 +40,13 @@ export const EditPatientDetails = ({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("profiles")
         .update({
           phone: formData.phone,
           emergency_contact: formData.emergency_contact,
-          allergies: formData.allergies.split(",").map(s => s.trim()).filter(Boolean),
-          chronic_conditions: formData.chronic_conditions.split(",").map(s => s.trim()).filter(Boolean),
+          allergies: formData.allergies.split(",").map((s: string) => s.trim()).filter(Boolean),
+          chronic_conditions: formData.chronic_conditions.split(",").map((s: string) => s.trim()).filter(Boolean),
           updated_at: new Date().toISOString(),
         })
         .eq("id", patient.id);

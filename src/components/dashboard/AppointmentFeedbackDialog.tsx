@@ -81,7 +81,7 @@ export const AppointmentFeedbackDialog = ({
 
     try {
       // Check if feedback already exists
-      const { data: existingData } = await supabase
+      const { data: existingData } = await (supabase as any)
         .from("appointment_feedback")
         .select("id")
         .eq("appointment_id", appointmentId)
@@ -102,7 +102,7 @@ export const AppointmentFeedbackDialog = ({
 
       if (existingData) {
         // Update existing feedback
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from("appointment_feedback")
           .update(feedbackData)
           .eq("id", existingData.id);
@@ -110,12 +110,14 @@ export const AppointmentFeedbackDialog = ({
         if (error) throw error;
       } else {
         // Insert new feedback
-        const { error } = await supabase.from("appointment_feedback").insert({
-          appointment_id: appointmentId,
-          patient_id: patientId,
-          doctor_id: doctorId,
-          ...feedbackData,
-        });
+        const { error } = await (supabase as any)
+          .from("appointment_feedback")
+          .insert({
+            appointment_id: appointmentId,
+            patient_id: patientId,
+            doctor_id: doctorId,
+            ...feedbackData,
+          });
 
         if (error) throw error;
       }

@@ -57,7 +57,7 @@ export const MedicationTracker = ({ userId }: { userId: string }) => {
   }, [userId]);
 
   const loadMedications = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("medications")
       .select("*")
       .eq("user_id", userId)
@@ -69,11 +69,11 @@ export const MedicationTracker = ({ userId }: { userId: string }) => {
       return;
     }
 
-    setMedications(data || []);
+    setMedications((data as Medication[]) || []);
   };
 
   const loadInactiveMedications = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("medications")
       .select("*")
       .eq("user_id", userId)
@@ -85,12 +85,12 @@ export const MedicationTracker = ({ userId }: { userId: string }) => {
       return;
     }
 
-    setInactiveMedications(data || []);
+    setInactiveMedications((data as Medication[]) || []);
   };
 
   const loadTodayLogs = async () => {
     const today = new Date().toISOString().split("T")[0];
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("medication_logs")
       .select("*")
       .eq("user_id", userId)
@@ -102,7 +102,7 @@ export const MedicationTracker = ({ userId }: { userId: string }) => {
       return;
     }
 
-    setLogs(data || []);
+    setLogs((data as MedicationLog[]) || []);
   };
 
   const handleSubmit = async () => {
@@ -112,7 +112,7 @@ export const MedicationTracker = ({ userId }: { userId: string }) => {
     }
 
     if (editingMed) {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("medications")
         .update({
           name: formData.name,

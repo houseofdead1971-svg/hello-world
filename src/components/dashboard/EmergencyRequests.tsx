@@ -51,8 +51,7 @@ export const EmergencyRequests = ({ doctorId }: EmergencyRequestsProps) => {
   const fetchEmergencyRequests = async () => {
     try {
       setLoading(true);
-      // @ts-ignore - emergency_bookings table added via migration
-      const { data: requestsData, error: requestsError } = await supabase
+      const { data: requestsData, error: requestsError } = await (supabase as any)
         .from("emergency_bookings")
         .select("id, patient_id, reason, urgency_level, status, requested_at, doctor_notes")
         .eq("doctor_id", doctorId)
@@ -70,10 +69,10 @@ export const EmergencyRequests = ({ doctorId }: EmergencyRequestsProps) => {
       }
 
       // Get unique patient IDs
-      const patientIds = [...new Set(requestsData.map((r: any) => r.patient_id))];
+      const patientIds = [...new Set((requestsData as any[]).map((r: any) => r.patient_id))];
 
       // Fetch patient names and emails
-      const { data: profilesData } = await supabase
+      const { data: profilesData } = await (supabase as any)
         .from("profiles")
         .select("id, full_name, email")
         .in("id", patientIds);
@@ -109,8 +108,7 @@ export const EmergencyRequests = ({ doctorId }: EmergencyRequestsProps) => {
   };
 
   const subscribeToChanges = () => {
-    // @ts-ignore - emergency_bookings table added via migration
-    const channel = supabase
+    const channel = (supabase as any)
       .channel("doctor-emergency-requests")
       .on(
         "postgres_changes",
@@ -137,8 +135,7 @@ export const EmergencyRequests = ({ doctorId }: EmergencyRequestsProps) => {
       if (!selectedRequest) return;
 
       // First, get the emergency booking details
-      // @ts-ignore - emergency_bookings table added via migration
-      const { data: bookingData, error: bookingError } = await supabase
+      const { data: bookingData, error: bookingError } = await (supabase as any)
         .from("emergency_bookings")
         .select("*")
         .eq("id", requestId)
@@ -157,8 +154,7 @@ export const EmergencyRequests = ({ doctorId }: EmergencyRequestsProps) => {
       console.log("Booking data:", bookingData);
 
       // Update emergency booking status
-      // @ts-ignore - emergency_bookings table added via migration
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from("emergency_bookings")
         .update({
           status: "approved",
@@ -191,7 +187,7 @@ export const EmergencyRequests = ({ doctorId }: EmergencyRequestsProps) => {
 
       console.log("Creating appointment with data:", appointmentData);
 
-      const { data: createdAppointment, error: appointmentError } = await supabase
+      const { data: createdAppointment, error: appointmentError } = await (supabase as any)
         .from("appointments")
         .insert([appointmentData])
         .select();
@@ -223,8 +219,7 @@ export const EmergencyRequests = ({ doctorId }: EmergencyRequestsProps) => {
   const handleReject = async (requestId: string) => {
     setIsProcessing(true);
     try {
-      // @ts-ignore - emergency_bookings table added via migration
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("emergency_bookings")
         .update({
           status: "rejected",
