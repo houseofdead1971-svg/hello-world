@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -61,35 +61,11 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
     doctorId: string;
     doctorName: string;
   } | null>(null);
+  
+  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    if (!patientId) return;
-    
-    // Only fetch once on mount and when patientId actually changes
-    let isMounted = true;
-    
-    const loadData = async () => {
-      if (!isMounted) return;
-      try {
-        await Promise.all([
-          fetchPatientInfo(),
-          fetchAppointmentHistory(),
-          fetchFeedbacks(),
-          fetchPrescriptions()
-        ]);
-      } catch (error) {
-        console.error("Error loading appointment history data:", error);
-      }
-    };
-    
-    loadData();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [patientId]);
-
-  const fetchPatientInfo = async () => {
+  // Memoized fetch functions to prevent recreation on every render
+  const fetchPatientInfo = useCallback(async () => {
     try {
       const { data, error } = await (supabase as any)
         .from("profiles")
@@ -99,16 +75,16 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
 
       if (error) throw error;
 
-      if (data) {
+      if (isMountedRef.current && data) {
         setPatientName(data.full_name || "");
         setPatientEmail(data.email || "");
       }
     } catch (error) {
       console.error("Error fetching patient info:", error);
     }
-  };
+  }, [patientId]);
 
-  const fetchAppointmentHistory = async () => {
+  const fetchAppointmentHistory = useCallback(async () => {
     try {
       // Fetch regular appointments
       const { data: appointments, error: apptError } = await (supabase as any)
@@ -191,16 +167,18 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
 
       console.log("[fetchAppointmentHistory] Loaded appointments:", allAppointments.length, "items");
       console.log("[fetchAppointmentHistory] Appointment IDs:", allAppointments.map(a => ({ id: a.id, isEmergency: a.isEmergencyBooking })));
-      setAppointments(allAppointments);
-      setLoading(false);
+      if (isMountedRef.current) {
+        setAppointments(allAppointments);
+      }
     } catch (error) {
       console.error("Error fetching appointment history:", error);
-      toast.error("Failed to load appointment history");
-      setLoading(false);
+      if (isMountedRef.current) {
+        toast.error("Failed to load appointment history");
+      }
     }
-  };
+  }, [patientId]);
 
-  const fetchFeedbacks = async () => {
+  const fetchFeedbacks = useCallback(async () => {
     try {
       const { data, error } = await (supabase as any)
         .from("appointment_feedback")
@@ -213,13 +191,15 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
       (data as any[])?.forEach((feedback: any) => {
         feedbackMap[feedback.appointment_id] = feedback as Feedback;
       });
-      setFeedbacks(feedbackMap);
+      if (isMountedRef.current) {
+        setFeedbacks(feedbackMap);
+      }
     } catch (error) {
       console.error("Error fetching feedbacks:", error);
     }
-  };
+  }, [patientId]);
 
-  const fetchPrescriptions = async () => {
+  const fetchPrescriptions = useCallback(async () => {
     try {
       // Fetch all prescriptions for this patient
       const { data, error } = await (supabase as any)
@@ -250,7 +230,9 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
 
       if (!data || data.length === 0) {
         console.log("[fetchPrescriptions] No prescriptions found for patient");
-        setPrescriptions({});
+        if (isMountedRef.current) {
+          setPrescriptions({});
+        }
         return;
       }
 
@@ -335,11 +317,43 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
         patient_id: p.patient_id,
         key_used: p.appointment_id || p.emergency_booking_id
       })));
-      setPrescriptions(prescriptionMap);
+      if (isMountedRef.current) {
+        setPrescriptions(prescriptionMap);
+      }
     } catch (error) {
       console.error("[fetchPrescriptions] Unexpected error:", error);
     }
-  };
+  }, [patientId]);
+
+  // CRITICAL FIX: Only trigger initial load once when patientId changes
+  useEffect(() => {
+    if (!patientId) {
+      setLoading(false);
+      return;
+    }
+    
+    isMountedRef.current = true;
+    setLoading(true);
+
+    // Execute all fetches in parallel
+    Promise.all([
+      fetchPatientInfo(),
+      fetchAppointmentHistory(),
+      fetchFeedbacks(),
+      fetchPrescriptions()
+    ]).catch((error) => {
+      console.error("Error loading appointment history data:", error);
+    }).finally(() => {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    });
+
+    // Cleanup function
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [patientId, fetchPatientInfo, fetchAppointmentHistory, fetchFeedbacks, fetchPrescriptions]);
 
   const downloadPrescription = async (prescription: Prescription) => {
     if (!prescription.file_url) {
@@ -463,9 +477,16 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
               variant="ghost"
               size="sm"
               onClick={() => {
-                fetchAppointmentHistory();
-                fetchFeedbacks();
-                fetchPrescriptions();
+                setLoading(true);
+                Promise.all([
+                  fetchAppointmentHistory(),
+                  fetchFeedbacks(),
+                  fetchPrescriptions()
+                ]).finally(() => {
+                  if (isMountedRef.current) {
+                    setLoading(false);
+                  }
+                });
               }}
               disabled={loading}
               className="h-8 w-8 p-0"
