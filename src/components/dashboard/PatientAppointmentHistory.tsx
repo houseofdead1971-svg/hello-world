@@ -473,38 +473,6 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
                 <p className="text-xs sm:text-sm text-muted-foreground">Your past consultations and feedback</p>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setLoading(true);
-                Promise.all([
-                  fetchAppointmentHistory(),
-                  fetchFeedbacks(),
-                  fetchPrescriptions()
-                ]).finally(() => {
-                  if (isMountedRef.current) {
-                    setLoading(false);
-                  }
-                });
-              }}
-              disabled={loading}
-              className="h-8 w-8 p-0"
-              title="Refresh appointment history"
-            >
-              <svg
-                className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"></path>
-              </svg>
-            </Button>
           </div>
         </div>
         
