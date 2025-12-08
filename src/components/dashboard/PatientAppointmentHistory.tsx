@@ -644,14 +644,14 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
 
                     {/* Prescriptions Section */}
                     {prescriptions[appointment.id]?.length ? (
-                      <div className="space-y-0.5 sm:space-y-1 bg-primary/5 p-1.5 sm:p-2 rounded border border-primary/10 overflow-hidden">
+                      <div className="space-y-0.5 sm:space-y-1 bg-primary/5 p-1.5 sm:p-2 rounded border border-primary/10">
                         <div className="flex items-center gap-1">
                           <Pill className="h-3 w-3 text-primary flex-shrink-0" />
                           <span className="text-xs font-medium truncate">
                             Prescriptions ({prescriptions[appointment.id].reduce((total, rx) => total + rx.medicines.length, 0)} medicine{prescriptions[appointment.id].reduce((total, rx) => total + rx.medicines.length, 0) !== 1 ? 's' : ''})
                           </span>
                         </div>
-                        <ScrollArea className="w-full h-auto max-h-64 rounded-lg border border-border/40">
+                        <ScrollArea className="w-full max-h-32 rounded-lg border border-border/40">
                           <div className="space-y-1.5 p-2">
                             {prescriptions[appointment.id].map((rx, rxIdx) => (
                               <div key={rx.id} className="bg-background/50 p-1.5 rounded space-y-1">
