@@ -483,14 +483,14 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
             <p className="text-xs sm:text-sm text-muted-foreground mt-1">Your appointment history will appear here</p>
           </div>
         ) : (
-          <ScrollArea className="h-[600px] p-2 sm:p-3">
-            <div className="space-y-2">
+          <ScrollArea className="h-[600px] p-4 sm:p-6">
+            <div className="space-y-3 pr-4">
               {appointments.map((appointment) => (
                 <Card
                   key={appointment.id}
-                  className="group p-1.5 sm:p-2 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80 mb-1.5 sm:mb-2"
+                  className="group p-3 sm:p-4 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80"
                 >
-                  <div className="space-y-1.5 sm:space-y-2">
+                  <div className="space-y-2 sm:space-y-3">
                     {/* Header with doctor name and status */}
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1">
                       <div className="flex-1 min-w-0">
