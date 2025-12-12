@@ -14,6 +14,7 @@ import { AvailableDoctors } from "@/components/dashboard/AvailableDoctors";
 import { PatientAppointments } from "@/components/dashboard/PatientAppointments";
 import { PatientAppointmentHistory } from "@/components/dashboard/PatientAppointmentHistory";
 import { EmergencyBookingDialog } from "@/components/dashboard/EmergencyBookingDialog";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -310,6 +311,7 @@ const Dashboard = ({ showChat = false }: DashboardProps) => {
             </nav>
             
             <div className="flex items-center gap-2">
+              <ThemeToggle />
               <Notifications userId={user.id} />
               <ProfileDropdown user={user} />
             </div>

@@ -12,6 +12,7 @@ import Notifications from "@/components/dashboard/Notifications";
 import { AppointmentManagement } from "@/components/dashboard/AppointmentManagement";
 import { DoctorAppointmentHistory } from "@/components/dashboard/DoctorAppointmentHistory";
 import { PatientDetailsDialog } from "@/components/dashboard/PatientDetailsDialog";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -726,6 +727,7 @@ const DoctorDashboard = ({ showChat = false }: DoctorDashboardProps) => {
             </nav>
 
             <div className="flex items-center gap-2 md:gap-3">
+              <ThemeToggle />
               {user && <Notifications userId={user.id} />}
               {user && <ProfileDropdown user={user} />}
             </div>

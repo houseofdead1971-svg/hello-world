@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Activity, Shield, Sparkles, FileHeart, Pill, Clock, ChevronLeft, ChevronRight, Calendar, MessageSquare, Phone, Linkedin, Users, Heart, Stethoscope, Award, Menu, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { usePageTransition } from "@/App";
 import doctorVideo from "@/assets/doctor_video.mp4";
 
@@ -162,19 +163,22 @@ const Landing = () => {
               ))}
             </div>
 
-            {/* Get Started Button - Desktop Only with Enhanced Hover */}
-            <Link to="/auth" className="hidden lg:block">
-              <Button
-                size="sm"
-                className="relative group bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-accent text-primary-foreground border border-primary/50 hover:border-accent/50 shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/50 transition-all duration-500 hover:scale-105 active:scale-95 font-semibold px-6"
-              >
-                <span className="relative z-10 flex items-center gap-2">
-                  Get Started
-                  <span className="inline-block transition-transform duration-500 group-hover:translate-x-1">→</span>
-                </span>
-                <div className="absolute inset-0 rounded-md bg-gradient-to-r from-primary/0 via-white/20 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 group-hover:animate-pulse"></div>
-              </Button>
-            </Link>
+            {/* Theme Toggle & Get Started Button - Desktop Only */}
+            <div className="hidden lg:flex items-center gap-3">
+              <ThemeToggle />
+              <Link to="/auth">
+                <Button
+                  size="sm"
+                  className="relative group bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-accent text-primary-foreground border border-primary/50 hover:border-accent/50 shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/50 transition-all duration-500 hover:scale-105 active:scale-95 font-semibold px-6"
+                >
+                  <span className="relative z-10 flex items-center gap-2">
+                    Get Started
+                    <span className="inline-block transition-transform duration-500 group-hover:translate-x-1">→</span>
+                  </span>
+                  <div className="absolute inset-0 rounded-md bg-gradient-to-r from-primary/0 via-white/20 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 group-hover:animate-pulse"></div>
+                </Button>
+              </Link>
+            </div>
 
             {/* Mobile Menu Button with Smooth Animation */}
             <button
@@ -223,15 +227,18 @@ const Landing = () => {
                   </Link>
                 ))}
 
-                {/* Mobile Get Started Button */}
-                <Link to="/auth" onClick={() => setMobileMenuOpen(false)} className="pt-2">
-                  <Button
-                    size="sm"
-                    className="w-full bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-accent text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/50 transition-all duration-500 active:scale-95 font-semibold"
-                  >
-                    Get Started
-                  </Button>
-                </Link>
+                {/* Mobile Theme Toggle & Get Started Button */}
+                <div className="flex items-center gap-3 pt-2">
+                  <ThemeToggle />
+                  <Link to="/auth" onClick={() => setMobileMenuOpen(false)} className="flex-1">
+                    <Button
+                      size="sm"
+                      className="w-full bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-accent text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/50 transition-all duration-500 active:scale-95 font-semibold"
+                    >
+                      Get Started
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
