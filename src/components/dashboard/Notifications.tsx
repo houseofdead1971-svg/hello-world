@@ -181,12 +181,12 @@ export const Notifications = ({ userId }: { userId: string }) => {
               <button
                 key={n.id}
                 onClick={(e) => markAsRead(n.id, n.link, e as React.MouseEvent)}
-                className={`w-full px-3 py-2.5 text-left hover:bg-accent/50 transition-colors ${n.read ? 'opacity-60' : 'font-medium'}`}
+                className={`w-full px-3 py-2.5 text-left hover:bg-accent/50 transition-colors ${n.read ? 'opacity-60' : ''}`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{n.title}</div>
-                    <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{n.message}</div>
+                    <div className={`text-sm truncate text-notification-title ${!n.read ? 'font-semibold' : 'font-medium'}`}>{n.title}</div>
+                    <div className="text-xs text-notification-message mt-1 line-clamp-2">{n.message}</div>
                   </div>
                   <div className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 sm:ml-2 mt-1 sm:mt-0">
                     {n.created_at ? new Date(n.created_at).toLocaleString('en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}

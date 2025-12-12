@@ -281,31 +281,18 @@ const Dashboard = ({ showChat = false }: DashboardProps) => {
               </div>
             </div>
 
-            <nav className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2">
+            <nav className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 bg-muted/50 backdrop-blur-sm p-1.5 rounded-xl border border-border/50">
               {navLinks.map((link) => (
                 <button
                   key={link.id}
                   onClick={() => setActiveTab(link.id)}
-                  className={`group relative px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${
+                  className={`relative px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${
                     activeTab === link.id
-                      ? "text-primary-foreground relative z-10"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "text-primary-foreground bg-gradient-to-r from-primary to-primary-light shadow-md shadow-primary/25"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/80"
                   }`}
                 >
-                  {activeTab === link.id ? (
-                    <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-primary to-primary-light opacity-100 transition-opacity duration-300"></div>
-                  ) : (
-                    <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
-                  )}
-                  <div className={`absolute inset-0 rounded-lg border transition-colors duration-300 ${
-                    activeTab === link.id ? 'border-primary/30' : 'border-transparent group-hover:border-primary/30'
-                  }`} />
-                  <span className="relative flex items-center gap-1">
-                    {link.label}
-                    {activeTab !== link.id && (
-                      <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-primary to-accent rounded-full group-hover:w-full transition-all duration-500"></span>
-                    )}
-                  </span>
+                  <span className="relative z-10">{link.label}</span>
                 </button>
               ))}
             </nav>

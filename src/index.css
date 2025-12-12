@@ -28,6 +28,10 @@ All colors MUST be HSL.
     --secondary-foreground: 210 15% 20%;
 
     --muted: 200 15% 94%;
+    
+    /* Notification text for light theme */
+    --notification-title: 210 20% 15%;
+    --notification-message: 210 12% 40%;
     --muted-foreground: 210 12% 50%;
 
     /* Blue accent - complementary to primary teal */
@@ -97,6 +101,10 @@ All colors MUST be HSL.
 
     --muted: 220 15% 18%;
     --muted-foreground: 210 15% 70%;
+    
+    /* Notification text for dark theme */
+    --notification-title: 210 20% 95%;
+    --notification-message: 210 15% 70%;
 
     --accent: 200 75% 55%;
     --accent-foreground: 220 25% 8%;
