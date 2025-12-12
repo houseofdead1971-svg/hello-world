@@ -263,7 +263,7 @@ const Landing = () => {
           <div className="max-w-4xl mx-auto text-center space-y-8">
 
             <h1 className="text-5xl md:text-7xl font-bold tracking-tight">
-              <span className="text-white">Your Health, </span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-accent via-primary-light to-primary drop-shadow-lg">Your Health, </span>
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary-light">
                 Connected & Secure
               </span>
