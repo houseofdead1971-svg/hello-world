@@ -4,7 +4,6 @@ import { Activity, Shield, Sparkles, FileHeart, Pill, Clock, ChevronLeft, Chevro
 import { Link, useNavigate } from "react-router-dom";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { usePageTransition } from "@/App";
-import { motion } from "framer-motion";
 import doctorVideo from "@/assets/doctor_video.mp4";
 
 const animationStyles = `
@@ -101,10 +100,13 @@ const Landing = () => {
       rootMargin: "0px 0px -50px 0px",
     });
 
-    const cards = document.querySelectorAll("[data-animate-card]");
-    cards.forEach((card) => observer.observe(card));
+    const timer = setTimeout(() => {
+      const cards = document.querySelectorAll("[data-animate-card]");
+      cards.forEach((card) => observer.observe(card));
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       observer.disconnect();
     };
   }, []);
@@ -563,25 +565,23 @@ const Landing = () => {
 
 const FeatureCard = ({ id, isVisible, icon, title, description }: { id: string; isVisible: boolean; icon: React.ReactNode; title: string; description: string }) => {
   const cardIndex = parseInt(id.split('-')[1]) - 1;
+  const delayClass = ['animate-delay-100', 'animate-delay-200', 'animate-delay-300', 'animate-delay-400', 'animate-delay-500', 'animate-delay-600'][cardIndex % 6];
   
   return (
-    <motion.div 
+    <div 
       id={id}
-      initial={{ opacity: 0, y: 30 }}
-      animate={isVisible ? { opacity: 1, y: 0 } : undefined}
-      transition={{ 
-        duration: 0.6, 
-        delay: cardIndex * 0.1,
-        ease: [0.25, 0.46, 0.45, 0.94]
-      }}
-      className="group p-8 rounded-lg bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+      data-animate-card
+      className={`group p-8 rounded-lg bg-card border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 ${
+        isVisible ? `animate-fade-in-slide-up ${delayClass}` : ''
+      }`}
+      style={!isVisible ? { opacity: 0, transform: 'translateY(30px)' } : undefined}
     >
       <div className="inline-flex p-3 rounded-lg bg-primary/10 text-primary mb-4 group-hover:scale-110 group-hover:bg-primary/20 transition-all duration-300">
         {icon}
       </div>
       <h3 className="text-xl font-semibold mb-3">{title}</h3>
       <p className="text-muted-foreground leading-relaxed">{description}</p>
-    </motion.div>
+    </div>
   );
 };
 
