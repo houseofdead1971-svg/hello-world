@@ -206,7 +206,7 @@ const Profile = () => {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
+                <Label htmlFor="fullName">{userRole === "doctor" ? (fullName.startsWith('Dr.') ? "Full Name" : "Full Name (Dr. will be added)") : "Full Name"}</Label>
                 <Input
                   id="fullName"
                   value={fullName}

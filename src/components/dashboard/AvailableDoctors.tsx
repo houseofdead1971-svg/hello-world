@@ -215,7 +215,7 @@ export const AvailableDoctors = ({ patientId }: { patientId: string }) => {
                         </Avatar>
                         <div className="flex-1 min-w-0 w-full text-center sm:text-left">
                           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-2 mb-2">
-                            <h3 className="font-semibold text-base sm:text-lg group-hover:text-primary transition-colors truncate">{doctor.full_name}</h3>
+                            <h3 className="font-semibold text-base sm:text-lg group-hover:text-primary transition-colors truncate">{doctor.full_name.startsWith('Dr.') ? doctor.full_name : `Dr. ${doctor.full_name}`}</h3>
                             <div className="flex items-center gap-1 flex-wrap flex-shrink-0 justify-center sm:justify-start w-full sm:w-auto">
                               <Badge variant="secondary" className="gap-0.5 bg-accent/10 text-accent border-accent/20 flex-shrink-0 text-xs">
                                 <Award className="h-3 w-3" />
