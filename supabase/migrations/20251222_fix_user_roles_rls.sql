@@ -9,12 +9,12 @@ BEGIN
   CREATE TABLE IF NOT EXISTS public.user_roles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-    role text NOT NULL DEFAULT 'patient' CHECK (role IN ('patient', 'doctor', 'admin')),
+    role text NOT NULL DEFAULT 'patient' CHECK (role IN ('patient', 'doctor')),
     created_at timestamp with time zone DEFAULT now()
   );
   
   -- Add role constraint if table already exists
-  ALTER TABLE public.user_roles ADD CONSTRAINT check_valid_role CHECK (role IN ('patient', 'doctor', 'admin'));
+  ALTER TABLE public.user_roles ADD CONSTRAINT check_valid_role CHECK (role IN ('patient', 'doctor'));
 EXCEPTION WHEN OTHERS THEN
   -- Table might already exist or constraint already added
   NULL;
