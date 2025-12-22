@@ -117,10 +117,8 @@ export const useN8nChat = () => {
         // @ts-ignore - External CDN module
         const { createChat } = await import('https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js');
         
-        // Use local n8n for development, remote for production
-        const webhookUrl = import.meta.env.DEV 
-          ? 'http://localhost:5678/webhook/91e16669-c4a9-4c40-b5da-2e0bf5d76a97/chat'
-          : 'https://shaven-luz-superideally.ngrok-free.dev/webhook/91e16669-c4a9-4c40-b5da-2e0bf5d76a97/chat';
+        // Use n8n webhook for chat
+        const webhookUrl = 'https://shaven-luz-superideally.ngrok-free.dev/webhook/91e16669-c4a9-4c40-b5da-2e0bf5d76a97/chat';
         
         // Initialize n8n chat with Mayur as agent name and theme colors
         window.n8nChatInstance = createChat({

@@ -54,10 +54,8 @@ interface DoctorDashboardProps {
 const DoctorDashboard = ({ showChat = false }: DoctorDashboardProps) => {
   const navigate = useNavigate();
   
-  // Initialize n8n chat if showChat is true
-  if (showChat) {
-    useN8nChat();
-  }
+  // Initialize n8n chat - unconditional hook call (required by React)
+  useN8nChat();
   
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
