@@ -120,7 +120,7 @@ export const useN8nChat = () => {
         // Use local n8n for development, remote for production
         const webhookUrl = import.meta.env.DEV 
           ? 'http://localhost:5678/webhook/91e16669-c4a9-4c40-b5da-2e0bf5d76a97/chat'
-          : 'https://n8n-9aim.onrender.com/webhook/91e16669-c4a9-4c40-b5da-2e0bf5d76a97/chat';
+          : 'https://shaven-luz-superideally.ngrok-free.dev/webhook/91e16669-c4a9-4c40-b5da-2e0bf5d76a97/chat';
         
         // Initialize n8n chat with Mayur as agent name and theme colors
         window.n8nChatInstance = createChat({
