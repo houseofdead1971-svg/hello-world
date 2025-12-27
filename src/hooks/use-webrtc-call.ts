@@ -228,9 +228,28 @@ export const useWebRTCCall = (
     });
   }, []);
 
-  // Initialize peer connection
-  const initializePeerConnection = useCallback(() => {
+  // Get or create peer connection (ensures only ONE instance exists)
+  const getOrCreatePeerConnection = useCallback(() => {
+    // If we have an existing, non-closed connection, reuse it
+    if (peerConnectionRef.current && peerConnectionRef.current.signalingState !== 'closed') {
+      console.log('[WebRTC] Reusing existing peer connection, signalingState:', peerConnectionRef.current.signalingState);
+      return peerConnectionRef.current;
+    }
+
+    // Close any existing connection before creating a new one
+    if (peerConnectionRef.current) {
+      console.log('[WebRTC] Closing old peer connection before creating new one');
+      try {
+        peerConnectionRef.current.close();
+      } catch (e) {
+        console.warn('[WebRTC] Error closing old connection:', e);
+      }
+      peerConnectionRef.current = null;
+    }
+
+    // Create new peer connection
     try {
+      console.log('[WebRTC] Creating NEW peer connection');
       const peerConnection = new RTCPeerConnection(configuration);
 
       peerConnection.onicecandidate = (event) => {
@@ -355,6 +374,44 @@ export const useWebRTCCall = (
           callStartTimeRef.current = Date.now();
           setState((prev) => ({ ...prev, isCallActive: true, error: null }));
           
+          // CRITICAL: Check for remote tracks via receivers (fallback if ontrack didn't fire)
+          setTimeout(() => {
+            const receivers = peerConnection.getReceivers();
+            console.log('[WebRTC] 🔍 Checking receivers after connection:', receivers.length);
+            receivers.forEach((receiver, index) => {
+              const track = receiver.track;
+              if (track) {
+                console.log(`[WebRTC] Receiver ${index}:`, {
+                  kind: track.kind,
+                  id: track.id,
+                  enabled: track.enabled,
+                  readyState: track.readyState,
+                });
+                
+                // If we have a track but no remote stream, create one
+                setState((prev) => {
+                  if (!prev.remoteStream && track) {
+                    const newStream = new MediaStream([track]);
+                    remoteStreamRef.current = newStream;
+                    console.log('[WebRTC] 🎥 Created remote stream from receiver:', track.kind);
+                    return { ...prev, remoteStream: newStream };
+                  } else if (prev.remoteStream && track) {
+                    // Check if track is already in stream
+                    const hasTrack = prev.remoteStream.getTracks().some(t => t.id === track.id);
+                    if (!hasTrack) {
+                      prev.remoteStream.addTrack(track);
+                      remoteStreamRef.current = prev.remoteStream;
+                      const updatedStream = new MediaStream(prev.remoteStream.getTracks());
+                      console.log('[WebRTC] 🎥 Added track to remote stream from receiver:', track.kind);
+                      return { ...prev, remoteStream: updatedStream };
+                    }
+                  }
+                  return prev;
+                });
+              }
+            });
+          }, 1000); // Wait 1 second after connection to check receivers
+          
           // Start call duration timer
           if (durationIntervalRef.current) {
             clearInterval(durationIntervalRef.current);
@@ -419,11 +476,17 @@ export const useWebRTCCall = (
       peerConnectionRef.current = peerConnection;
       return peerConnection;
     } catch (error) {
-      console.error('[WebRTC] Error initializing peer connection:', error);
-      setState((prev) => ({ ...prev, error: 'Failed to initialize peer connection' }));
+      console.error('[WebRTC] Error creating peer connection:', error);
+      peerConnectionRef.current = null;
+      setState((prev) => ({ ...prev, error: 'Failed to create peer connection' }));
       throw error;
     }
   }, []);
+
+  // Initialize peer connection (deprecated - use getOrCreatePeerConnection instead)
+  const initializePeerConnection = useCallback(() => {
+    return getOrCreatePeerConnection();
+  }, [getOrCreatePeerConnection]);
 
   // Start call (initiator)
   const startCall = useCallback(async () => {
@@ -445,13 +508,9 @@ export const useWebRTCCall = (
       iceCandidatesRef.current = [];
       remoteDescriptionSetRef.current = false;
 
-      // Close existing peer connection if any
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-      }
-
-      // Initialize peer connection FIRST (before getting media)
-      const peerConnection = initializePeerConnection();
+      // Get or create peer connection (ensures only ONE instance)
+      // This will close any existing connection before creating a new one
+      const peerConnection = getOrCreatePeerConnection();
 
       // Get local media stream with better error handling
       let stream: MediaStream;
@@ -510,7 +569,30 @@ export const useWebRTCCall = (
       // Add tracks to peer connection
       stream.getTracks().forEach((track) => {
         console.log('[WebRTC] Adding track:', track.kind, 'enabled:', track.enabled);
-        peerConnection.addTrack(track, stream);
+        const sender = peerConnection.addTrack(track, stream);
+        console.log('[WebRTC] Track added, sender:', {
+          trackId: sender.track?.id,
+          trackKind: sender.track?.kind,
+        });
+      });
+
+      // Ensure transceivers are set up for receiving
+      const transceivers = peerConnection.getTransceivers();
+      console.log('[WebRTC] Transceivers after adding tracks:', transceivers.length);
+      transceivers.forEach((transceiver, index) => {
+        console.log(`[WebRTC] Transceiver ${index}:`, {
+          mid: transceiver.mid,
+          direction: transceiver.direction,
+          currentDirection: transceiver.currentDirection,
+          receiverTrack: transceiver.receiver.track?.kind,
+          senderTrack: transceiver.sender.track?.kind,
+        });
+        
+        // Ensure transceiver can receive
+        if (transceiver.direction === 'sendonly') {
+          transceiver.direction = 'sendrecv';
+          console.log(`[WebRTC] Changed transceiver ${index} direction to sendrecv`);
+        }
       });
 
       // Create and send offer with proper media constraints
@@ -599,14 +681,11 @@ export const useWebRTCCall = (
     try {
       setState((prev) => ({ ...prev, isAnswering: true, error: null }));
 
-      // Check if peer connection exists and has remote description
-      const peerConnection = peerConnectionRef.current;
-      if (!peerConnection) {
-        throw new Error('Peer connection not initialized. Please wait for the call offer.');
-      }
+      // Get or create peer connection (ensures only ONE instance)
+      const peerConnection = getOrCreatePeerConnection();
 
       if (!peerConnection.remoteDescription) {
-        throw new Error('No call offer received yet. Please wait for the call.');
+        throw new Error('No call offer received yet. Please wait for the other person to start the call.');
       }
 
       // Get local media stream with better error handling
@@ -666,7 +745,30 @@ export const useWebRTCCall = (
       // Add tracks to peer connection BEFORE creating answer
       stream.getTracks().forEach((track) => {
         console.log('[WebRTC] Adding track to answer:', track.kind, 'enabled:', track.enabled);
-        peerConnection.addTrack(track, stream);
+        const sender = peerConnection.addTrack(track, stream);
+        console.log('[WebRTC] Track added for answer, sender:', {
+          trackId: sender.track?.id,
+          trackKind: sender.track?.kind,
+        });
+      });
+
+      // Ensure transceivers are set up for receiving
+      const transceivers = peerConnection.getTransceivers();
+      console.log('[WebRTC] Transceivers after adding tracks for answer:', transceivers.length);
+      transceivers.forEach((transceiver, index) => {
+        console.log(`[WebRTC] Transceiver ${index} for answer:`, {
+          mid: transceiver.mid,
+          direction: transceiver.direction,
+          currentDirection: transceiver.currentDirection,
+          receiverTrack: transceiver.receiver.track?.kind,
+          senderTrack: transceiver.sender.track?.kind,
+        });
+        
+        // Ensure transceiver can receive
+        if (transceiver.direction === 'sendonly') {
+          transceiver.direction = 'sendrecv';
+          console.log(`[WebRTC] Changed transceiver ${index} direction to sendrecv for answer`);
+        }
       });
 
       // Create answer AFTER tracks are added with proper media constraints
@@ -959,11 +1061,13 @@ export const useWebRTCCall = (
         try {
           console.log('[WebRTC] Received offer, current signalingState:', peerConnectionRef.current?.signalingState);
           
-          // Initialize or use existing peer connection
-          let peerConnection = peerConnectionRef.current;
-          if (!peerConnection || peerConnection.signalingState === 'closed') {
-            console.log('[WebRTC] Creating new peer connection for offer');
-            peerConnection = initializePeerConnection();
+          // Get or create peer connection (ensures only ONE instance)
+          const peerConnection = getOrCreatePeerConnection();
+          
+          // If we already have a remote description, we might be processing a duplicate offer
+          if (peerConnection.remoteDescription) {
+            console.warn('[WebRTC] Received offer but already have remote description. Ignoring duplicate offer.');
+            return;
           }
 
           // Clear any buffered ICE candidates from previous attempts
