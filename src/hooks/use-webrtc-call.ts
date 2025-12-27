@@ -261,10 +261,57 @@ export const useWebRTCCall = (
       };
 
       peerConnection.ontrack = (event) => {
-        console.log('[WebRTC] Remote track received:', event.track.kind);
-        if (event.streams && event.streams.length > 0) {
-          setState((prev) => ({ ...prev, remoteStream: event.streams[0] }));
-        }
+        console.log('[WebRTC] Remote track received:', {
+          kind: event.track.kind,
+          id: event.track.id,
+          enabled: event.track.enabled,
+          readyState: event.track.readyState,
+          streamsCount: event.streams?.length || 0,
+        });
+
+        // Handle remote stream - tracks can come with or without streams
+        setState((prev) => {
+          let updatedStream: MediaStream | null = null;
+
+          if (event.streams && event.streams.length > 0) {
+            // Track came with a stream - use it
+            updatedStream = event.streams[0];
+            console.log('[WebRTC] Using stream from event, tracks:', updatedStream.getTracks().map(t => ({ kind: t.kind, id: t.id, enabled: t.enabled })));
+          } else if (prev.remoteStream) {
+            // We already have a remote stream - add this track to it
+            const hasTrack = prev.remoteStream.getTracks().some(t => t.id === event.track.id);
+            if (!hasTrack) {
+              prev.remoteStream.addTrack(event.track);
+              console.log('[WebRTC] Added track to existing remote stream:', event.track.kind);
+              updatedStream = prev.remoteStream;
+            } else {
+              console.log('[WebRTC] Track already in stream, skipping');
+              return prev;
+            }
+          } else {
+            // No existing stream and no stream in event - create new one
+            updatedStream = new MediaStream([event.track]);
+            console.log('[WebRTC] Created new remote stream from track:', event.track.kind);
+          }
+
+          if (updatedStream) {
+            // Log stream details
+            console.log('[WebRTC] Remote stream updated:', {
+              id: updatedStream.id,
+              active: updatedStream.active,
+              tracks: updatedStream.getTracks().map(t => ({
+                kind: t.kind,
+                id: t.id,
+                enabled: t.enabled,
+                readyState: t.readyState,
+              })),
+            });
+
+            return { ...prev, remoteStream: updatedStream };
+          }
+
+          return prev;
+        });
       };
 
       peerConnection.onconnectionstatechange = () => {
@@ -434,9 +481,21 @@ export const useWebRTCCall = (
         peerConnection.addTrack(track, stream);
       });
 
-      // Create and send offer
-      const offer = await peerConnection.createOffer();
+      // Create and send offer with proper media constraints
+      const offer = await peerConnection.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
       await peerConnection.setLocalDescription(offer);
+      
+      console.log('[WebRTC] Offer created:', {
+        type: offer.type,
+        sdp: offer.sdp.substring(0, 200) + '...',
+        tracks: peerConnection.getSenders().map(s => ({
+          kind: s.track?.kind,
+          enabled: s.track?.enabled,
+        })),
+      });
 
       console.log('[WebRTC] Sending offer with signalingState:', peerConnection.signalingState);
       
@@ -578,9 +637,25 @@ export const useWebRTCCall = (
         peerConnection.addTrack(track, stream);
       });
 
-      // Create answer AFTER tracks are added
-      const answer = await peerConnection.createAnswer();
+      // Create answer AFTER tracks are added with proper media constraints
+      const answer = await peerConnection.createAnswer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
       await peerConnection.setLocalDescription(answer);
+      
+      console.log('[WebRTC] Answer created:', {
+        type: answer.type,
+        sdp: answer.sdp.substring(0, 200) + '...',
+        tracks: peerConnection.getSenders().map(s => ({
+          kind: s.track?.kind,
+          enabled: s.track?.enabled,
+        })),
+        receivers: peerConnection.getReceivers().map(r => ({
+          kind: r.track?.kind,
+          enabled: r.track?.enabled,
+        })),
+      });
 
       console.log('[WebRTC] Sending answer, signalingState:', peerConnection.signalingState);
       

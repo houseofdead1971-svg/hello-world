@@ -104,7 +104,51 @@ export const VideoChat = ({
   // Connect remote stream to video element
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
+      console.log('[VideoChat] Setting remote video stream:', {
+        streamId: remoteStream.id,
+        active: remoteStream.active,
+        tracks: remoteStream.getTracks().map(t => ({
+          kind: t.kind,
+          enabled: t.enabled,
+          readyState: t.readyState,
+        })),
+      });
+
       remoteVideoRef.current.srcObject = remoteStream;
+      
+      // Ensure video plays and audio is not muted
+      remoteVideoRef.current.muted = false;
+      remoteVideoRef.current.volume = 1.0;
+      
+      // Play the video explicitly
+      remoteVideoRef.current.play().catch((error) => {
+        console.error('[VideoChat] Error playing remote video:', error);
+      });
+
+      // Log when video starts playing
+      remoteVideoRef.current.onloadedmetadata = () => {
+        console.log('[VideoChat] Remote video metadata loaded');
+      };
+
+      remoteVideoRef.current.onplay = () => {
+        console.log('[VideoChat] Remote video started playing');
+      };
+
+      // Monitor track events
+      remoteStream.getTracks().forEach((track) => {
+        track.onended = () => {
+          console.log('[VideoChat] Remote track ended:', track.kind);
+        };
+        track.onmute = () => {
+          console.warn('[VideoChat] Remote track muted:', track.kind);
+        };
+        track.onunmute = () => {
+          console.log('[VideoChat] Remote track unmuted:', track.kind);
+        };
+      });
+    } else if (remoteVideoRef.current && !remoteStream) {
+      // Clear video when stream is removed
+      remoteVideoRef.current.srcObject = null;
     }
   }, [remoteStream]);
 
@@ -188,7 +232,22 @@ export const VideoChat = ({
             ref={remoteVideoRef}
             autoPlay
             playsInline
+            muted={false}
             className="w-full h-full object-cover"
+            onLoadedMetadata={() => {
+              console.log('[VideoChat] Remote video metadata loaded, playing...');
+              if (remoteVideoRef.current) {
+                remoteVideoRef.current.play().catch(err => {
+                  console.error('[VideoChat] Error auto-playing remote video:', err);
+                });
+              }
+            }}
+            onPlay={() => {
+              console.log('[VideoChat] Remote video is playing');
+            }}
+            onError={(e) => {
+              console.error('[VideoChat] Remote video error:', e);
+            }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
