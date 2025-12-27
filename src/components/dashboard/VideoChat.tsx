@@ -292,27 +292,36 @@ export const VideoChat = ({
       >
         {/* Remote Video */}
         {remoteStream && isCallActive ? (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            muted={false}
-            className="w-full h-full object-cover"
-            onLoadedMetadata={() => {
-              console.log('[VideoChat] Remote video metadata loaded, playing...');
-              if (remoteVideoRef.current) {
-                remoteVideoRef.current.play().catch(err => {
-                  console.error('[VideoChat] Error auto-playing remote video:', err);
-                });
-              }
-            }}
-            onPlay={() => {
-              console.log('[VideoChat] Remote video is playing');
-            }}
-            onError={(e) => {
-              console.error('[VideoChat] Remote video error:', e);
-            }}
-          />
+          <>
+            <video
+              key={`remote-${remoteStream.id}-${remoteStream.getTracks().map(t => t.id).join('-')}`}
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              muted={false}
+              className="w-full h-full object-cover"
+              onLoadedMetadata={() => {
+                console.log('[VideoChat] ✅ Remote video metadata loaded, playing...');
+                if (remoteVideoRef.current) {
+                  remoteVideoRef.current.play().catch(err => {
+                    console.error('[VideoChat] ❌ Error auto-playing remote video:', err);
+                  });
+                }
+              }}
+              onPlay={() => {
+                console.log('[VideoChat] ✅ Remote video is playing');
+              }}
+              onError={(e) => {
+                console.error('[VideoChat] ❌ Remote video error:', e);
+              }}
+            />
+            {/* Debug: Show track info */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="absolute top-2 left-2 bg-black/50 text-white text-xs p-1 rounded z-10">
+                Tracks: {remoteStream.getTracks().length} ({remoteStream.getVideoTracks().length} video, {remoteStream.getAudioTracks().length} audio)
+              </div>
+            )}
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
             <div className="text-center px-4">

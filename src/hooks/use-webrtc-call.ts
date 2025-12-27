@@ -56,6 +56,7 @@ export const useWebRTCCall = (
   const callStartTimeRef = useRef<number | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const qualityCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
 
   // Helper function to get user media with fallback support
   const getUserMediaWithFallback = useCallback(async (constraints: MediaStreamConstraints): Promise<MediaStream> => {
@@ -289,16 +290,20 @@ export const useWebRTCCall = (
               enabled: t.enabled,
               readyState: t.readyState,
             })));
-          } else if (prev.remoteStream) {
+          } else if (prev.remoteStream || remoteStreamRef.current) {
             // We already have a remote stream - add this track to it
-            const hasTrack = prev.remoteStream.getTracks().some(t => t.id === event.track.id);
-            if (!hasTrack) {
-              prev.remoteStream.addTrack(event.track);
-              console.log('[WebRTC] ✅ Added track to existing remote stream:', event.track.kind);
-              updatedStream = prev.remoteStream;
-            } else {
-              console.log('[WebRTC] Track already in stream, skipping');
-              return prev;
+            const existingStream = remoteStreamRef.current || prev.remoteStream;
+            if (existingStream) {
+              const hasTrack = existingStream.getTracks().some(t => t.id === event.track.id);
+              if (!hasTrack) {
+                existingStream.addTrack(event.track);
+                console.log('[WebRTC] ✅ Added track to existing remote stream:', event.track.kind);
+                updatedStream = existingStream;
+                remoteStreamRef.current = existingStream;
+              } else {
+                console.log('[WebRTC] Track already in stream, skipping');
+                return prev;
+              }
             }
           } else {
             // No existing stream and no stream in event - create new one
@@ -315,11 +320,17 @@ export const useWebRTCCall = (
               }
             });
 
+            // Update ref
+            remoteStreamRef.current = updatedStream;
+
+            // Create a NEW stream instance to force React re-render
+            const newStream = new MediaStream(updatedStream.getTracks());
+            
             // Log stream details
             console.log('[WebRTC] 🎥 Remote stream updated:', {
-              id: updatedStream.id,
-              active: updatedStream.active,
-              tracks: updatedStream.getTracks().map(t => ({
+              id: newStream.id,
+              active: newStream.active,
+              tracks: newStream.getTracks().map(t => ({
                 kind: t.kind,
                 id: t.id,
                 enabled: t.enabled,
@@ -328,7 +339,7 @@ export const useWebRTCCall = (
             });
 
             // Force update to trigger re-render
-            return { ...prev, remoteStream: new MediaStream(updatedStream.getTracks()) };
+            return { ...prev, remoteStream: newStream };
           }
 
           return prev;
@@ -879,6 +890,7 @@ export const useWebRTCCall = (
     // Clear buffered ICE candidates
     iceCandidatesRef.current = [];
     remoteDescriptionSetRef.current = false;
+    remoteStreamRef.current = null;
 
     // Send call end signal
     if (signalChannelRef.current) {
