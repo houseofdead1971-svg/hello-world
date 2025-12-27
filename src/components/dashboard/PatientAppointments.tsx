@@ -233,9 +233,11 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
 
         const enrichedAppointments = upcomingAppointments.map((apt: any) => {
           const profile = (profiles as any[])?.find((p: any) => p.id === apt.doctor_id);
+          const fullName = profile?.full_name || "(Name not available)";
+          const doctorName = fullName.startsWith('Dr.') ? fullName : `Dr. ${fullName}`;
           return {
             ...apt,
-            doctor_name: profile?.full_name || "Dr. (Name not available)",
+            doctor_name: doctorName,
           };
         });
 

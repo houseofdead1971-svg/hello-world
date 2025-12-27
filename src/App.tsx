@@ -10,6 +10,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import ScrollToTop from "@/components/ScrollToTop";
 import { supabase } from "@/integrations/supabase/client";
 import { FloatingAIAssistant } from "@/components/dashboard/FloatingAIAssistant";
+import { CallNotificationProvider, useCallNotification } from "@/contexts/CallNotificationContext";
+import { IncomingCallNotification } from "@/components/IncomingCallNotification";
 import mayurPhoto from "@/assets/mayur-photo.jpg";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
@@ -99,6 +101,21 @@ const PageWrapper = ({ children }: { children: React.ReactNode }) => {
         {children}
       </motion.div>
     </AnimatePresence>
+  );
+};
+
+// Global Call Notification Component
+const GlobalCallNotification = () => {
+  const { incomingCall } = useCallNotification();
+
+  return (
+    <IncomingCallNotification
+      isVisible={incomingCall.isActive}
+      callerName={incomingCall.callerName}
+      appointmentId={incomingCall.appointmentId}
+      onAnswer={incomingCall.onAnswer}
+      onDecline={incomingCall.onDecline}
+    />
   );
 };
 
@@ -264,6 +281,7 @@ const AppContent = () => {
       <Toaster />
       <Sonner />
       <TransitionOverlay isActive={isTransitioning} origin={rippleOrigin} />
+      <GlobalCallNotification />
       <PageWrapper>
         <Routes>
           <Route path="/" element={<Landing />} />
@@ -329,7 +347,9 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AppContent />
+        <CallNotificationProvider>
+          <AppContent />
+        </CallNotificationProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

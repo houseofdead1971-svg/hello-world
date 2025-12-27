@@ -764,7 +764,7 @@ const DoctorDashboard = ({ showChat = false }: DoctorDashboardProps) => {
         {/* Welcome Section */}
         <div className="mb-8 md:mb-12">
           <h2 className="text-2xl md:text-4xl font-bold mb-2 md:mb-3 text-primary">
-            Welcome, Dr. {doctorName || user?.email?.split('@')[0] || 'Doctor'}
+            Welcome, {doctorName?.startsWith('Dr.') ? doctorName : `Dr. ${doctorName || user?.email?.split('@')[0] || 'Doctor'}`}
           </h2>
           <p className="text-muted-foreground text-base md:text-lg">Manage your patients and appointments</p>
         </div>

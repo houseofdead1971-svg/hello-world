@@ -506,59 +506,52 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
               {appointments.map((appointment) => (
                 <Card
                   key={appointment.id}
-                  className="group p-3 sm:p-4 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80"
+                  className="group p-2 sm:p-4 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80"
                 >
-                  <div className="space-y-2 sm:space-y-3">
+                  <div className="space-y-1.5 sm:space-y-3">
                     {/* Header with doctor name and urgency badge */}
-                    <div className="flex items-start justify-between gap-2 sm:gap-3">
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="text-sm sm:text-base font-semibold group-hover:text-primary transition-colors break-words">{appointment.doctor_name}</p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {((appointment as any).isEmergency || (appointment as any).isEmergencyBooking) && appointment.urgency_level && (
-                          <span className="flex-shrink-0">{getUrgencyBadge(appointment.urgency_level)}</span>
-                        )}
-                        <div className="flex-shrink-0">{getStatusBadge(appointment.status)}</div>
-                      </div>
+                    <div className="flex items-center justify-between gap-1.5 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium group-hover:text-primary transition-colors truncate flex-1">{appointment.doctor_name}</p>
+                      {(appointment as any).isEmergency || (appointment as any).isEmergencyBooking && appointment.urgency_level && (
+                        <span className="flex-shrink-0">{getUrgencyBadge(appointment.urgency_level)}</span>
+                      )}
                     </div>
 
-                    {/* Date, time row */}
-                    <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                      <span>{new Date(appointment.appointment_date).toLocaleDateString()}</span>
-                      <span className="hidden sm:inline">•</span>
-                      <span>{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    {/* Date, time and status row */}
+                    <div className="flex items-start justify-between gap-1.5">
+                      <div className="flex flex-col gap-0.5 text-xs text-muted-foreground flex-1">
+                        <span>{new Date(appointment.appointment_date).toLocaleDateString()}</span>
+                        <span>{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div className="flex-shrink-0">{getStatusBadge(appointment.status)}</div>
                     </div>
 
                     {appointment.reason && (
-                      <div className="bg-muted/30 p-2 sm:p-2.5 rounded-lg">
-                        <p className="text-xs sm:text-sm break-words"><span className="font-medium">Reason:</span> <span className="ml-1">{appointment.reason}</span></p>
-                      </div>
+                      <div className="text-xs bg-muted/30 p-2 sm:p-2.5 rounded break-words"><span className="font-medium">Reason:</span> <span className="ml-1">{appointment.reason}</span></div>
                     )}
                     {appointment.notes && (
-                      <div className="bg-muted/30 p-2 sm:p-2.5 rounded-lg">
-                        <p className="text-xs sm:text-sm break-words"><span className="font-medium">Notes:</span> <span className="ml-1">{appointment.notes}</span></p>
-                      </div>
+                      <div className="text-xs bg-muted/30 p-2 sm:p-2.5 rounded break-words"><span className="font-medium">Notes:</span> <span className="ml-1">{appointment.notes}</span></div>
                     )}
 
                     {/* Call button - shown 30 min before to 1 hour after appointment */}
                     {appointment.status === "approved" && canStartVideoCall(appointment.appointment_date) && (!appointment.consultation_type || appointment.consultation_type === 'online') && (
-                      <div className="pt-2 sm:pt-2.5">
+                      <div className="pt-1.5 sm:pt-2">
                         <Button
                           size="sm"
                           onClick={() => {
                             setSelectedAppointmentForVideo(appointment);
                             setVideoChatOpen(true);
                           }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-9 sm:h-8 w-full sm:w-auto text-xs sm:text-sm font-medium"
+                          className="bg-blue-600 hover:bg-blue-700 text-white gap-1 h-8 w-full sm:w-auto text-xs font-medium"
                         >
-                          <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                          <Video className="h-3 w-3" />
                           Join Call
                         </Button>
                       </div>
                     )}
 
                     {canProvideFeedback(appointment) && (
-                      <div className="pt-2 sm:pt-3 border-t border-primary/10 space-y-2 sm:space-y-2.5">
+                      <div className="pt-1.5 sm:pt-2 border-t border-primary/10 space-y-1.5 sm:space-y-2">
                         <div className="flex gap-2 flex-wrap">
                           {appointment.status === "approved" && (!appointment.consultation_type || appointment.consultation_type === 'online') && (
                             <Button
@@ -567,9 +560,9 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
                                 setSelectedAppointmentForVideo(appointment);
                                 setVideoChatOpen(true);
                               }}
-                              className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-9 sm:h-8 w-full sm:w-auto text-xs sm:text-sm font-medium"
+                              className="bg-blue-600 hover:bg-blue-700 text-white gap-1 h-8 text-xs font-medium"
                             >
-                              <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                              <Video className="h-3 w-3" />
                               Join Call
                             </Button>
                           )}
@@ -578,7 +571,7 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
                             <Button
                               size="sm"
                               variant="outline"
-                              className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-8 border-primary/20 hover:bg-primary/10"
+                              className="w-full sm:w-auto text-xs h-8 border-primary/20 hover:bg-primary/10"
                               onClick={() =>
                                 setFeedbackDialog({
                                   open: true,
@@ -601,9 +594,9 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
                                   doctorName: appointment.doctor_name || "Doctor",
                                 })
                               }
-                              className="sm:w-auto w-full bg-gradient-to-r from-primary to-primary-light hover:shadow-md transition-all h-9 sm:h-8 text-xs sm:text-sm"
+                              className="sm:w-auto w-full bg-gradient-to-r from-primary to-primary-light hover:shadow-md transition-all h-8 text-xs"
                             >
-                              <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                              <MessageSquare className="h-3 w-3 mr-1" />
                               Provide Feedback
                             </Button>
                           )}

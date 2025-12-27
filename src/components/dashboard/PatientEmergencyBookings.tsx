@@ -210,7 +210,7 @@ export const PatientEmergencyBookings = ({ patientId }: PatientEmergencyBookings
                 {getStatusIcon(booking.status)}
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm">
-                    Dr. {booking.doctor_name || "Doctor"}
+                    {booking.doctor_name?.startsWith('Dr.') ? booking.doctor_name : `Dr. ${booking.doctor_name || "Doctor"}`}
                     {booking.doctor_specialization && (
                       <span className="text-xs text-muted-foreground ml-2">
                         ({booking.doctor_specialization})

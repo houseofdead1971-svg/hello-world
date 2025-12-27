@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { VideoChat } from './VideoChat';
 import { useWebRTCCall } from '@/hooks/use-webrtc-call';
+import { useCallNotification } from '@/contexts/CallNotificationContext';
 import { toast } from 'sonner';
 
 interface VideoChatDialogProps {
@@ -33,6 +34,7 @@ export const VideoChatDialog = ({
   const [showChat, setShowChat] = useState(false);
   const currentUserId = userRole === 'doctor' ? doctorId : patientId;
   const remoteUserId = userRole === 'doctor' ? patientId : doctorId;
+  const { setIncomingCall } = useCallNotification();
 
   const [callState, callActions] = useWebRTCCall(
     appointmentId,
@@ -40,6 +42,28 @@ export const VideoChatDialog = ({
     userRole,
     remoteUserId
   );
+
+  // Set up incoming call notification when call is incoming
+  useEffect(() => {
+    if (callState.incomingCall && isOpen) {
+      setIncomingCall({
+        callerName: callState.callerName || doctorName,
+        appointmentId,
+        onAnswer: async () => {
+          try {
+            await callActions.answerCall();
+          } catch (error) {
+            console.error('Error answering call:', error);
+          }
+        },
+        onDecline: () => {
+          callActions.dismissIncomingCall();
+        },
+      });
+    } else if (!callState.incomingCall) {
+      setIncomingCall(null);
+    }
+  }, [callState.incomingCall, isOpen, callState.callerName, doctorName, appointmentId, callActions, setIncomingCall]);
 
   // Only show video chat if consultation is online
   useEffect(() => {
@@ -80,7 +104,7 @@ export const VideoChatDialog = ({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+        <div className="flex-1 overflow-hidden min-h-0">
           <VideoChat
             localStream={callState.localStream}
             remoteStream={callState.remoteStream}
@@ -96,11 +120,6 @@ export const VideoChatDialog = ({
             appointmentId={appointmentId}
             userRole={userRole}
             error={callState.error}
-            callDuration={callState.callDuration}
-            connectionQuality={callState.connectionQuality}
-            availableCameras={callState.availableCameras}
-            selectedCameraId={callState.selectedCameraId}
-            onSwitchCamera={callActions.switchCamera}
           />
         </div>
       </DialogContent>

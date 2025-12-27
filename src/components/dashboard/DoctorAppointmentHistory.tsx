@@ -405,25 +405,24 @@ export const DoctorAppointmentHistory = ({
           <ScrollArea className="h-[600px] w-full">
             <div className="space-y-2 sm:space-y-2.5 p-2 sm:p-3">
               {appointments.map((appointment) => (
-                <Card key={appointment.id} className="group p-3 sm:p-4 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80">
-                  <div className="space-y-2 sm:space-y-3">
-                    <div className="flex flex-col gap-2 sm:gap-3">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <p className="font-semibold text-sm sm:text-base group-hover:text-primary transition-colors break-words">{appointment.patient_name}</p>
-                          <p className="text-xs sm:text-sm text-muted-foreground break-words">{appointment.patient_email}</p>
+                <Card key={appointment.id} className="group p-2 sm:p-2.5 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80">
+                  <div className="space-y-1 sm:space-y-1.5">
+                    <div className="flex flex-col gap-1.5 sm:gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-xs sm:text-sm group-hover:text-primary transition-colors truncate">{appointment.patient_name}</p>
+                          <p className="text-xs text-muted-foreground truncate hidden sm:block">{appointment.patient_email}</p>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0 self-start sm:self-center">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           {getStatusBadge(appointment.status, appointment.notes)}
                         </div>
                       </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-                        <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                          <span>{new Date(appointment.appointment_date).toLocaleDateString()}</span>
-                          <span className="hidden sm:inline">•</span>
-                          <span>{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                        <div className="flex gap-1 sm:gap-2 text-xs text-muted-foreground">
+                          <span className="truncate">{new Date(appointment.appointment_date).toLocaleDateString()}</span>
+                          <span className="text-xs text-muted-foreground">{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
-                        <div className="flex w-full sm:w-auto flex-row sm:items-center gap-2 sm:gap-2 sm:ml-auto">
+                        <div className="flex w-full sm:w-auto flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 sm:ml-auto">
                           <Button
                             size="sm"
                             variant="outline"
@@ -439,18 +438,17 @@ export const DoctorAppointmentHistory = ({
                                 isEmergencyBooking: appointment.is_emergency_booking || false,
                               })
                             }
-                            className="w-full sm:w-auto h-9 sm:h-8 px-3 sm:px-2 flex items-center justify-center gap-1 sm:gap-0 border-primary/20 hover:bg-primary/10 text-xs"
+                            className="w-full sm:w-8 h-9 sm:h-8 p-2 sm:p-0 flex items-center justify-center border-primary/20 hover:bg-primary/10"
                             title={appointment.is_emergency_booking ? "Add or manage prescription for this emergency appointment" : hasAppointmentPassed(appointment.appointment_date) ? "Add or manage prescription for this appointment" : "Prescription can only be added after appointment time"}
                           >
-                            <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                            <span className="sm:hidden">Prescription</span>
+                            <Upload className="h-3 w-3 sm:h-4 sm:w-4" />
                           </Button>
                           {appointment.status === "approved" && !hasAppointmentPassed(appointment.appointment_date) && (
                             <Button
                               size="sm"
                               variant="destructive"
                               onClick={() => cancelAppointment(appointment)}
-                              className="w-full sm:w-auto h-9 sm:h-8 px-3 text-xs hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                              className="w-full sm:w-auto h-8 sm:h-8 px-3 text-xs hover:bg-destructive hover:text-destructive-foreground transition-colors"
                             >
                               Cancel
                             </Button>
@@ -460,35 +458,31 @@ export const DoctorAppointmentHistory = ({
                     </div>
                     
                     {appointment.reason && (
-                      <div className="bg-muted/30 p-2 sm:p-2.5 rounded-lg">
-                        <p className="text-xs sm:text-sm break-words"><span className="font-medium">Reason:</span> {appointment.reason}</p>
-                      </div>
+                      <p className="text-xs bg-muted/30 p-1 rounded break-words"><span className="font-medium">Reason:</span> {appointment.reason}</p>
                     )}
                     {appointment.notes && (
-                      <div className="bg-muted/30 p-2 sm:p-2.5 rounded-lg">
-                        <p className="text-xs sm:text-sm break-words"><span className="font-medium">Notes:</span> {appointment.notes}</p>
-                      </div>
+                      <p className="text-xs bg-muted/30 p-1 rounded break-words"><span className="font-medium">Notes:</span> {appointment.notes}</p>
                     )}
 
                     {/* Call button - shown 30 min before to 1 hour after appointment */}
                     {appointment.status === "approved" && canStartVideoCall(appointment.appointment_date) && (!appointment.consultation_type || appointment.consultation_type === 'online') && (
-                      <div className="pt-2 sm:pt-2.5">
+                      <div className="pt-1 sm:pt-1.5">
                         <Button
                           size="sm"
                           onClick={() => {
                             setSelectedAppointmentForVideo(appointment);
                             setVideoChatOpen(true);
                           }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-9 sm:h-8 w-full sm:w-auto text-xs sm:text-sm font-medium"
+                          className="bg-blue-600 hover:bg-blue-700 text-white gap-1 h-8 text-xs w-full sm:w-auto font-medium"
                         >
-                          <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                          <Video className="h-3 w-3" />
                           Start Call
                         </Button>
                       </div>
                     )}
 
                     {canProvideFeedback(appointment) && (
-                      <div className="pt-2 sm:pt-3 border-t border-primary/10 space-y-2 sm:space-y-2.5">
+                      <div className="pt-1 sm:pt-1.5 border-t border-primary/10 space-y-1 sm:space-y-1.5">
                         <div className="flex gap-2 flex-wrap">
                           {appointment.status === "approved" && (!appointment.consultation_type || appointment.consultation_type === 'online') && (
                             <Button
@@ -497,9 +491,9 @@ export const DoctorAppointmentHistory = ({
                                 setSelectedAppointmentForVideo(appointment);
                                 setVideoChatOpen(true);
                               }}
-                              className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-9 sm:h-8 w-full sm:w-auto text-xs sm:text-sm font-medium"
+                              className="bg-blue-600 hover:bg-blue-700 text-white gap-1 h-8 text-xs font-medium"
                             >
-                              <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                              <Video className="h-3 w-3" />
                               Start Call
                             </Button>
                           )}

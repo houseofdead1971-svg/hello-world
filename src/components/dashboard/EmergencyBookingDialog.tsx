@@ -93,11 +93,15 @@ export const EmergencyBookingDialog = ({
       // Combine data
       const profileMap = new Map(profileData?.map((p: any) => [p.id, p.full_name]) || []);
       
-      const formattedDoctors = doctorData?.map((doc: any) => ({
-        id: doc.user_id,
-        full_name: profileMap.get(doc.user_id) || "Dr. [Name not available]",
-        specialization: doc.specialization,
-      })) || [];
+      const formattedDoctors = doctorData?.map((doc: any) => {
+        const fullName = profileMap.get(doc.user_id) || "[Name not available]";
+        const doctorName = fullName.startsWith('Dr.') ? fullName : `Dr. ${fullName}`;
+        return {
+          id: doc.user_id,
+          full_name: doctorName,
+          specialization: doc.specialization,
+        };
+      }) || [];
 
       console.log("Loaded doctors:", formattedDoctors);
       setDoctors(formattedDoctors);
@@ -230,7 +234,7 @@ export const EmergencyBookingDialog = ({
                   {doctors.map((doc) => (
                     <SelectItem key={doc.id} value={doc.id}>
                       <div className="flex flex-col gap-0.5 min-w-max">
-                        <span className="font-medium text-sm text-foreground">Dr. {doc.full_name}</span>
+                        <span className="font-medium text-sm text-foreground">{doc.full_name?.startsWith('Dr.') ? doc.full_name : `Dr. ${doc.full_name}`}</span>
                         {doc.specialization && (
                           <span className="text-xs text-slate-600 pl-0.5">
                             {doc.specialization}
