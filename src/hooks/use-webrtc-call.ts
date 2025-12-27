@@ -349,12 +349,34 @@ export const useWebRTCCall = (
             })),
           });
 
-          // Update state ONLY to trigger UI re-render (use a simple flag or track count)
-          // The actual stream is in the ref, not state
-          setState((prev) => ({
-            ...prev,
-            remoteStream: updatedStream, // Keep for UI, but video element will use ref
-          }));
+          // CRITICAL: Update state to trigger UI re-render
+          // Always create a new reference to force React to detect the change
+          // Even if tracks are the same, we need React to re-render the video element
+          const streamForState = new MediaStream(updatedStream.getTracks());
+          
+          setState((prev) => {
+            // Only update if the track count or IDs have changed
+            const prevTrackIds = prev.remoteStream?.getTracks().map(t => t.id).sort().join(',') || '';
+            const newTrackIds = streamForState.getTracks().map(t => t.id).sort().join(',');
+            
+            if (prevTrackIds !== newTrackIds || !prev.remoteStream) {
+              console.log('[WebRTC] State update: tracks changed', {
+                prev: prevTrackIds,
+                new: newTrackIds,
+              });
+              return {
+                ...prev,
+                remoteStream: streamForState,
+              };
+            }
+            
+            // Even if tracks are same, force update to ensure video element refreshes
+            console.log('[WebRTC] State update: forcing refresh (same tracks but ensuring UI update)');
+            return {
+              ...prev,
+              remoteStream: streamForState, // New reference forces re-render
+            };
+          });
         }
       };
 
@@ -368,9 +390,18 @@ export const useWebRTCCall = (
           setState((prev) => ({ ...prev, isCallActive: true, error: null }));
           
           // CRITICAL: Check for remote tracks via receivers (fallback if ontrack didn't fire)
-          setTimeout(() => {
+          // Check immediately and also after a delay
+          const checkReceivers = () => {
             const receivers = peerConnection.getReceivers();
             console.log('[WebRTC] 🔍 Checking receivers after connection:', receivers.length);
+            
+            if (receivers.length === 0) {
+              console.warn('[WebRTC] ⚠️ No receivers found - remote tracks may not have arrived yet');
+              return;
+            }
+
+            // Collect all tracks from receivers
+            const tracks: MediaStreamTrack[] = [];
             receivers.forEach((receiver, index) => {
               const track = receiver.track;
               if (track) {
@@ -380,30 +411,56 @@ export const useWebRTCCall = (
                   enabled: track.enabled,
                   readyState: track.readyState,
                 });
-                
-                // If we have a track but no remote stream, create one
-                setState((prev) => {
-                  if (!prev.remoteStream && track) {
-                    const newStream = new MediaStream([track]);
-                    remoteStreamRef.current = newStream;
-                    console.log('[WebRTC] 🎥 Created remote stream from receiver:', track.kind);
-                    return { ...prev, remoteStream: newStream };
-                  } else if (prev.remoteStream && track) {
-                    // Check if track is already in stream
-                    const hasTrack = prev.remoteStream.getTracks().some(t => t.id === track.id);
-                    if (!hasTrack) {
-                      prev.remoteStream.addTrack(track);
-                      remoteStreamRef.current = prev.remoteStream;
-                      const updatedStream = new MediaStream(prev.remoteStream.getTracks());
-                      console.log('[WebRTC] 🎥 Added track to remote stream from receiver:', track.kind);
-                      return { ...prev, remoteStream: updatedStream };
-                    }
-                  }
-                  return prev;
-                });
+                tracks.push(track);
               }
             });
-          }, 1000); // Wait 1 second after connection to check receivers
+
+            if (tracks.length > 0) {
+              // Create or update remote stream from receivers
+              let streamToUse: MediaStream;
+              
+              if (remoteStreamRef.current) {
+                // Add missing tracks to existing stream
+                tracks.forEach(track => {
+                  const hasTrack = remoteStreamRef.current!.getTracks().some(t => t.id === track.id);
+                  if (!hasTrack) {
+                    remoteStreamRef.current!.addTrack(track);
+                    console.log('[WebRTC] ✅ Added track to existing stream from receiver:', track.kind);
+                  }
+                });
+                streamToUse = remoteStreamRef.current;
+              } else {
+                // Create new stream from all receiver tracks
+                streamToUse = new MediaStream(tracks);
+                remoteStreamRef.current = streamToUse;
+                console.log('[WebRTC] 🎥 Created remote stream from receivers:', tracks.map(t => t.kind));
+              }
+
+              // Ensure all tracks are enabled
+              streamToUse.getTracks().forEach(track => {
+                if (!track.enabled) {
+                  track.enabled = true;
+                }
+              });
+
+              // Update state to trigger re-render
+              setState((prev) => ({
+                ...prev,
+                remoteStream: streamToUse,
+              }));
+
+              console.log('[WebRTC] ✅ Remote stream set from receivers:', {
+                tracks: streamToUse.getTracks().map(t => t.kind),
+              });
+            }
+          };
+
+          // Check immediately
+          checkReceivers();
+          
+          // Also check after delay (in case tracks arrive slightly later)
+          setTimeout(checkReceivers, 1000);
+          setTimeout(checkReceivers, 3000);
           
           // Start call duration timer
           if (durationIntervalRef.current) {

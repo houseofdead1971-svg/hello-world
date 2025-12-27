@@ -129,18 +129,22 @@ export const VideoChat = ({
       });
 
       // CRITICAL: Always set srcObject when remoteStream changes
-      // React re-renders can break MediaStream references, so we always reassign
-      const currentSrcObject = videoElement.srcObject;
-      if (currentSrcObject !== remoteStream) {
-        console.log('[VideoChat] Updating video srcObject');
-        videoElement.srcObject = remoteStream;
+      // React re-renders can break MediaStream references, so we ALWAYS reassign
+      console.log('[VideoChat] Setting srcObject, current:', videoElement.srcObject?.id, 'new:', remoteStream.id);
+      videoElement.srcObject = remoteStream;
+      
+      // Verify it was set
+      if (videoElement.srcObject !== remoteStream) {
+        console.error('[VideoChat] ❌ Failed to set srcObject!');
+        // Force set again
+        setTimeout(() => {
+          if (videoElement && remoteStream) {
+            videoElement.srcObject = remoteStream;
+            console.log('[VideoChat] Retried setting srcObject');
+          }
+        }, 100);
       } else {
-        // Even if reference is same, ensure tracks are still active
-        // Check if tracks are still in the stream
-        const hasActiveTracks = remoteStream.getTracks().some(t => t.readyState === 'live');
-        if (!hasActiveTracks) {
-          console.warn('[VideoChat] Stream has no active tracks, but srcObject is set');
-        }
+        console.log('[VideoChat] ✅ srcObject set successfully');
       }
 
       // Ensure all tracks are enabled
@@ -218,8 +222,20 @@ export const VideoChat = ({
       // Try to play immediately
       playVideo();
 
+      // Periodic check to ensure srcObject is still set (handles edge cases)
+      const checkInterval = setInterval(() => {
+        if (videoElement && remoteStream) {
+          if (videoElement.srcObject !== remoteStream) {
+            console.warn('[VideoChat] ⚠️ srcObject was lost, reattaching...');
+            videoElement.srcObject = remoteStream;
+            playVideo();
+          }
+        }
+      }, 2000); // Check every 2 seconds
+
       // Cleanup function
       return () => {
+        clearInterval(checkInterval);
         videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
         videoElement.removeEventListener('play', handlePlay);
         videoElement.removeEventListener('error', handleError);
@@ -314,7 +330,7 @@ export const VideoChat = ({
         {remoteStream && isCallActive ? (
           <>
             <video
-              key={`remote-${remoteStream.id}-${remoteStream.getTracks().map(t => t.id).join('-')}`}
+              key={`remote-${remoteStream.id}-${remoteStream.getTracks().map(t => `${t.kind}-${t.id}`).sort().join('-')}`}
               ref={remoteVideoRef}
               autoPlay
               playsInline
@@ -339,6 +355,10 @@ export const VideoChat = ({
             {process.env.NODE_ENV === 'development' && (
               <div className="absolute top-2 left-2 bg-black/50 text-white text-xs p-1 rounded z-10">
                 Tracks: {remoteStream.getTracks().length} ({remoteStream.getVideoTracks().length} video, {remoteStream.getAudioTracks().length} audio)
+                <br />
+                Stream ID: {remoteStream.id}
+                <br />
+                Has srcObject: {remoteVideoRef.current?.srcObject ? 'Yes' : 'No'}
               </div>
             )}
           </>
