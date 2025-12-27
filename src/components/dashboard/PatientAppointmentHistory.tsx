@@ -3,11 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, User, MessageSquare, Star, Pill, Download, AlertTriangle } from "lucide-react";
+import { Calendar, Clock, User, MessageSquare, Star, Pill, Download, AlertTriangle, Video } from "lucide-react";
 import { toast } from "sonner";
 import { AppointmentFeedbackDialog } from "./AppointmentFeedbackDialog";
+import { VideoChatDialog } from "./VideoChatDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { downloadPrescriptionPDF } from "@/lib/generatePrescriptionPDF";
+import { canStartVideoCall } from "@/lib/istTimezone";
 
 interface Appointment {
   id: string;
@@ -19,6 +21,7 @@ interface Appointment {
   doctor_name?: string;
   isEmergencyBooking?: boolean;
   urgency_level?: string;
+  consultation_type?: string;
 }
 
 interface Feedback {
@@ -61,6 +64,8 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
     doctorId: string;
     doctorName: string;
   } | null>(null);
+  const [videoChatOpen, setVideoChatOpen] = useState(false);
+  const [selectedAppointmentForVideo, setSelectedAppointmentForVideo] = useState<Appointment | null>(null);
   
   const isMountedRef = useRef(true);
 
@@ -501,125 +506,109 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
               {appointments.map((appointment) => (
                 <Card
                   key={appointment.id}
-                  className="group p-2 sm:p-4 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80"
+                  className="group p-3 sm:p-4 border-primary/10 hover:shadow-[var(--shadow-glow)] hover:border-primary/30 transition-all duration-300 bg-gradient-to-br from-card to-card/80"
                 >
-                  <div className="space-y-1.5 sm:space-y-3">
+                  <div className="space-y-2 sm:space-y-3">
                     {/* Header with doctor name and urgency badge */}
-                    <div className="flex items-center justify-between gap-1.5 min-w-0">
-                      <p className="text-xs sm:text-sm font-medium group-hover:text-primary transition-colors truncate flex-1">{appointment.doctor_name}</p>
-                      {(appointment as any).isEmergency || (appointment as any).isEmergencyBooking && appointment.urgency_level && (
-                        <span className="flex-shrink-0">{getUrgencyBadge(appointment.urgency_level)}</span>
-                      )}
+                    <div className="flex items-start justify-between gap-2 sm:gap-3">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="text-sm sm:text-base font-semibold group-hover:text-primary transition-colors break-words">{appointment.doctor_name}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {((appointment as any).isEmergency || (appointment as any).isEmergencyBooking) && appointment.urgency_level && (
+                          <span className="flex-shrink-0">{getUrgencyBadge(appointment.urgency_level)}</span>
+                        )}
+                        <div className="flex-shrink-0">{getStatusBadge(appointment.status)}</div>
+                      </div>
                     </div>
 
-                    {/* Date, time and status row */}
-                    <div className="flex items-start justify-between gap-1.5">
-                      <div className="flex flex-col gap-0.5 text-xs text-muted-foreground flex-1">
-                        <span>{new Date(appointment.appointment_date).toLocaleDateString()}</span>
-                        <span>{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      <div className="flex-shrink-0">{getStatusBadge(appointment.status)}</div>
+                    {/* Date, time row */}
+                    <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
+                      <span>{new Date(appointment.appointment_date).toLocaleDateString()}</span>
+                      <span className="hidden sm:inline">•</span>
+                      <span>{new Date(appointment.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
 
                     {appointment.reason && (
-                      <div className="text-xs bg-muted/30 p-2 sm:p-2.5 rounded break-words"><span className="font-medium">Reason:</span> <span className="ml-1">{appointment.reason}</span></div>
+                      <div className="bg-muted/30 p-2 sm:p-2.5 rounded-lg">
+                        <p className="text-xs sm:text-sm break-words"><span className="font-medium">Reason:</span> <span className="ml-1">{appointment.reason}</span></p>
+                      </div>
                     )}
                     {appointment.notes && (
-                      <div className="text-xs bg-muted/30 p-2 sm:p-2.5 rounded break-words"><span className="font-medium">Notes:</span> <span className="ml-1">{appointment.notes}</span></div>
+                      <div className="bg-muted/30 p-2 sm:p-2.5 rounded-lg">
+                        <p className="text-xs sm:text-sm break-words"><span className="font-medium">Notes:</span> <span className="ml-1">{appointment.notes}</span></p>
+                      </div>
                     )}
 
-                    {/* Prescriptions Section */}
-                    {prescriptions[appointment.id]?.length ? (
-                      <div className="space-y-0.5 sm:space-y-1 bg-primary/5 p-1.5 sm:p-2 rounded border border-primary/10">
-                        <div className="flex items-center gap-1">
-                          <Pill className="h-3 w-3 text-primary flex-shrink-0" />
-                          <span className="text-xs font-medium truncate">
-                            Prescriptions ({prescriptions[appointment.id].reduce((total, rx) => total + rx.medicines.length, 0)} medicine{prescriptions[appointment.id].reduce((total, rx) => total + rx.medicines.length, 0) !== 1 ? 's' : ''})
-                          </span>
-                        </div>
-                        <div 
-                          className="max-h-48 overflow-y-auto rounded-lg border border-border/40"
+                    {/* Call button - shown 30 min before to 1 hour after appointment */}
+                    {appointment.status === "approved" && canStartVideoCall(appointment.appointment_date) && (!appointment.consultation_type || appointment.consultation_type === 'online') && (
+                      <div className="pt-2 sm:pt-2.5">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setSelectedAppointmentForVideo(appointment);
+                            setVideoChatOpen(true);
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-9 sm:h-8 w-full sm:w-auto text-xs sm:text-sm font-medium"
                         >
-                          <div className="space-y-1.5 p-2">
-                            {prescriptions[appointment.id].map((rx, rxIdx) => (
-                              <div key={rx.id} className="bg-background/50 p-1.5 rounded space-y-1">
-                                <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-xs text-muted-foreground">
-                                      Rx {rxIdx + 1} ({rx.medicines.length}M)
-                                    </p>
-                                    {rx.medicines.map((med, medIdx) => (
-                                      <div key={med.id} className="ml-1 text-xs">
-                                        <p className="font-medium text-xs">{medIdx + 1}. {med.medicine_name}</p>
-                                        <p className="text-xs text-muted-foreground leading-none">
-                                          {med.dosage} • {med.frequency} • {med.duration}
-                                        </p>
-                                        {med.notes && (
-                                          <p className="text-xs text-muted-foreground italic">
-                                            {med.notes}
-                                          </p>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <div className="flex gap-0.5 flex-shrink-0">
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={async () => {
-                                      try {
-                                        // Use doctor info stored in prescription for faster download
-                                        const prescriptionData = {
-                                          id: rx.id,
-                                          doctorName: rx.doctor_name || appointment.doctor_name || "Doctor",
-                                          doctorLicense: rx.doctor_license || "N/A",
-                                          doctorSpecialization: rx.doctor_specialization || "General Practice",
-                                          patientName: patientName,
-                                          patientEmail: patientEmail,
-                                          appointmentDate: appointment.appointment_date,
-                                          medicines: rx.medicines,
-                                          generalNotes: rx.notes,
-                                          createdAt: rx.created_at,
-                                        };
-                                        await downloadPrescriptionPDF(prescriptionData);
-                                        toast.success("Prescription PDF downloaded");
-                                      } catch (error) {
-                                        console.error("Error downloading PDF:", error);
-                                        toast.error("Failed to download prescription PDF");
-                                      }
-                                    }}
-                                    title="Download prescription as PDF with QR code"
-                                    className="h-7 w-7 p-0"
-                                  >
-                                    <Download className="h-3 w-3" />
-                                  </Button>
-                                  {rx.file_url && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => downloadPrescription(rx)}
-                                      title="Download uploaded prescription file"
-                                      className="h-7 w-7 p-0"
-                                    >
-                                      <Pill className="h-3 w-3" />
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                              {rx.notes && (
-                                <p className="text-xs text-muted-foreground italic bg-background/30 p-0.5 rounded leading-tight">
-                                  {rx.notes}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                          </div>
-                        </div>
+                          <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                          Join Call
+                        </Button>
                       </div>
-                    ) : null}
+                    )}
 
                     {canProvideFeedback(appointment) && (
-                      <div className="pt-1.5 sm:pt-2 border-t border-primary/10 space-y-1.5 sm:space-y-2">
+                      <div className="pt-2 sm:pt-3 border-t border-primary/10 space-y-2 sm:space-y-2.5">
+                        <div className="flex gap-2 flex-wrap">
+                          {appointment.status === "approved" && (!appointment.consultation_type || appointment.consultation_type === 'online') && (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setSelectedAppointmentForVideo(appointment);
+                                setVideoChatOpen(true);
+                              }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-9 sm:h-8 w-full sm:w-auto text-xs sm:text-sm font-medium"
+                            >
+                              <Video className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                              Join Call
+                            </Button>
+                          )}
+                          
+                          {feedbacks[appointment.id]?.patient_feedback ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-8 border-primary/20 hover:bg-primary/10"
+                              onClick={() =>
+                                setFeedbackDialog({
+                                  open: true,
+                                  appointmentId: appointment.id,
+                                  doctorId: appointment.doctor_id,
+                                  doctorName: appointment.doctor_name || "Doctor",
+                                })
+                              }
+                            >
+                              Edit Feedback
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() =>
+                                setFeedbackDialog({
+                                  open: true,
+                                  appointmentId: appointment.id,
+                                  doctorId: appointment.doctor_id,
+                                  doctorName: appointment.doctor_name || "Doctor",
+                                })
+                              }
+                              className="sm:w-auto w-full bg-gradient-to-r from-primary to-primary-light hover:shadow-md transition-all h-9 sm:h-8 text-xs sm:text-sm"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                              Provide Feedback
+                            </Button>
+                          )}
+                        </div>
+                        
                         {feedbacks[appointment.id]?.patient_feedback ? (
                           <div className="space-y-0.5 sm:space-y-1">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
@@ -643,39 +632,8 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
                             <p className="text-xs text-muted-foreground bg-primary/5 p-1 sm:p-1.5 rounded break-words">
                               {feedbacks[appointment.id]?.patient_feedback}
                             </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full sm:w-auto text-xs h-8 border-primary/20 hover:bg-primary/10"
-                              onClick={() =>
-                                setFeedbackDialog({
-                                  open: true,
-                                  appointmentId: appointment.id,
-                                  doctorId: appointment.doctor_id,
-                                  doctorName: appointment.doctor_name || "Doctor",
-                                })
-                              }
-                            >
-                              Edit Feedback
-                            </Button>
                           </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              setFeedbackDialog({
-                                open: true,
-                                appointmentId: appointment.id,
-                                doctorId: appointment.doctor_id,
-                                doctorName: appointment.doctor_name || "Doctor",
-                              })
-                            }
-                            className="sm:w-auto w-full bg-gradient-to-r from-primary to-primary-light hover:shadow-md transition-all"
-                          >
-                            <MessageSquare className="h-3 w-3 mr-1" />
-                            Provide Feedback
-                          </Button>
-                        )}
+                        ) : null}
 
                         {feedbacks[appointment.id]?.doctor_feedback && (
                           <div className="space-y-0.5 sm:space-y-1 bg-accent/5 p-1 sm:p-1.5 rounded border border-accent/20">
@@ -719,6 +677,22 @@ export const PatientAppointmentHistory = ({ patientId }: { patientId: string }) 
           userRole="patient"
           doctorName={feedbackDialog.doctorName}
           existingFeedback={feedbacks[feedbackDialog.appointmentId]}
+        />
+      )}
+
+      {selectedAppointmentForVideo && (
+        <VideoChatDialog
+          isOpen={videoChatOpen}
+          onClose={() => {
+            setVideoChatOpen(false);
+            setSelectedAppointmentForVideo(null);
+          }}
+          appointmentId={selectedAppointmentForVideo.id}
+          patientId={patientId}
+          doctorId={selectedAppointmentForVideo.doctor_id}
+          doctorName={selectedAppointmentForVideo.doctor_name || "Doctor"}
+          userRole="patient"
+          consultationType={selectedAppointmentForVideo.consultation_type || "online"}
         />
       )}
     </>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, AlertTriangle } from "lucide-react";
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, AlertTriangle, Video } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { hasAppointmentPassed, formatAppointmentDateIST, getCurrentISTTime } from "@/lib/istTimezone";
+import { hasAppointmentPassed, formatAppointmentDateIST, getCurrentISTTime, canStartVideoCall } from "@/lib/istTimezone";
+import { VideoChatDialog } from "./VideoChatDialog";
 
 interface Appointment {
   id: string;
@@ -22,6 +23,7 @@ interface Appointment {
   status: string;
   reason: string;
   notes: string;
+  consultation_type?: string;
   doctor_name?: string;
 }
 
@@ -44,6 +46,8 @@ type AnyAppointment = Appointment | EmergencyBooking;
 export const PatientAppointments = ({ patientId }: { patientId: string }) => {
   const [appointments, setAppointments] = useState<AnyAppointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [videoChatOpen, setVideoChatOpen] = useState(false);
+  const [selectedAppointmentForVideo, setSelectedAppointmentForVideo] = useState<AnyAppointment | null>(null);
 
   useEffect(() => {
     if (patientId) {
@@ -398,7 +402,21 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
                           {getStatusBadge(apt.status, isEmergency, 'urgency_level' in apt ? apt.urgency_level : undefined)}
                         </TableCell>
                         <TableCell className="p-2">
-                          <div className="flex">
+                          <div className="flex gap-2">
+                            {isApproved && canStartVideoCall(apt.appointment_date) && (!('consultation_type' in apt) || apt.consultation_type === 'online') && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => {
+                                  setSelectedAppointmentForVideo(apt);
+                                  setVideoChatOpen(true);
+                                }}
+                                className="h-7 px-3 text-xs bg-blue-600 hover:bg-blue-700 gap-1 whitespace-nowrap"
+                              >
+                                <Video className="h-3 w-3" />
+                                Join Call
+                              </Button>
+                            )}
                             {canCancel ? (
                               <Button
                                 size="sm"
@@ -462,12 +480,25 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
                       )}
 
                       <div className="flex justify-end gap-2 pt-2">
+                        {isApproved && canStartVideoCall(apt.appointment_date) && (!('consultation_type' in apt) || apt.consultation_type === 'online') && (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedAppointmentForVideo(apt);
+                              setVideoChatOpen(true);
+                            }}
+                            className="flex-1 sm:flex-none h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 gap-1"
+                          >
+                            <Video className="h-3 w-3" />
+                            Join Call
+                          </Button>
+                        )}
                         {canCancel ? (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => cancelAppointment(apt.id, apt.appointment_date)}
-                            className="w-full sm:w-auto flex-none h-8 sm:h-8 px-3 text-xs border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                            className="flex-1 sm:flex-none h-8 px-3 text-xs border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors"
                           >
                             Cancel
                           </Button>
@@ -483,6 +514,22 @@ export const PatientAppointments = ({ patientId }: { patientId: string }) => {
           </>
         )}
       </CardContent>
+
+      {selectedAppointmentForVideo && (
+        <VideoChatDialog
+          isOpen={videoChatOpen}
+          onClose={() => {
+            setVideoChatOpen(false);
+            setSelectedAppointmentForVideo(null);
+          }}
+          appointmentId={selectedAppointmentForVideo.id}
+          patientId={patientId}
+          doctorId={selectedAppointmentForVideo.doctor_id}
+          doctorName={selectedAppointmentForVideo.doctor_name || "Doctor"}
+          userRole="patient"
+          consultationType={'consultation_type' in selectedAppointmentForVideo ? selectedAppointmentForVideo.consultation_type || 'offline' : 'offline'}
+        />
+      )}
     </Card>
   );
 };

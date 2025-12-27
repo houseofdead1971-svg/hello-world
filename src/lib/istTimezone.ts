@@ -101,6 +101,36 @@ export const hasAppointmentPassed = (appointmentDate: string): boolean => {
 };
 
 /**
+ * Check if appointment is within 5 minutes or has already started (using IST)
+ * Returns true if current time is between 5 minutes before and appointment time
+ */
+export const isWithin5MinutesOfAppointment = (appointmentDate: string): boolean => {
+  const appointmentTime = new Date(appointmentDate);
+  const currentTime = getCurrentISTTime();
+  
+  const timeDifferenceMs = appointmentTime.getTime() - currentTime.getTime();
+  const timeDifferenceMinutes = timeDifferenceMs / (1000 * 60);
+  
+  // Show button if within 5 minutes before appointment or appointment has started (up to 1 hour after)
+  return timeDifferenceMinutes <= 5 && timeDifferenceMinutes >= -60;
+};
+
+/**
+ * Check if appointment can have video call enabled (approved and online, within call window)
+ * Extended window: shows button 30 mins before for scheduling flexibility
+ */
+export const canStartVideoCall = (appointmentDate: string): boolean => {
+  const appointmentTime = new Date(appointmentDate);
+  const currentTime = getCurrentISTTime();
+  
+  const timeDifferenceMs = appointmentTime.getTime() - currentTime.getTime();
+  const timeDifferenceMinutes = timeDifferenceMs / (1000 * 60);
+  
+  // Show button if within 30 minutes before appointment or up to 1 hour after start
+  return timeDifferenceMinutes <= 30 && timeDifferenceMinutes >= -60;
+};
+
+/**
  * Get today's date in IST (YYYY-MM-DD format)
  */
 export const getTodayIST = (): string => {

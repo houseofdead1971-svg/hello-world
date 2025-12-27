@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, AlertTriangle } from "lucide-react";
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, AlertTriangle, Video } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,8 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import { hasAppointmentPassed, formatAppointmentDateIST, getCurrentISTTime } from "@/lib/istTimezone";
+import { hasAppointmentPassed, formatAppointmentDateIST, getCurrentISTTime, canStartVideoCall } from "@/lib/istTimezone";
+import { VideoChatDialog } from "./VideoChatDialog";
 
 interface Appointment {
   id: string;
@@ -37,6 +38,7 @@ interface Appointment {
   isEmergency?: boolean;
   urgency_level?: string;
   contact_number?: string;
+  consultation_type?: string;
 }
 
 export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
@@ -44,6 +46,8 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
   const [loading, setLoading] = useState(true);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [doctorNotes, setDoctorNotes] = useState("");
+  const [videoChatOpen, setVideoChatOpen] = useState(false);
+  const [selectedAppointmentForVideo, setSelectedAppointmentForVideo] = useState<Appointment | null>(null);
   const appointmentsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -118,6 +122,19 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
         return !hasAppointmentPassed(apt.appointment_date);
       }) || [];
 
+      // Fetch approved appointments (for video calls)
+      const { data: approvedAppointmentsData } = await (supabase as any)
+        .from("appointments")
+        .select("*")
+        .eq("doctor_id", doctorId)
+        .eq("status", "approved")
+        .order("appointment_date", { ascending: true });
+
+      // Filter approved appointments - only show if within 30 mins before or up to 1 hour after
+      const validApprovedAppointments = (approvedAppointmentsData as any[])?.filter((apt: any) => {
+        return canStartVideoCall(apt.appointment_date);
+      }) || [];
+
       // Fetch emergency bookings (pending only - they have priority)
       const { data: emergencyData } = await (supabase as any)
         .from("emergency_bookings")
@@ -159,6 +176,7 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
               isEmergency: true,
               urgency_level: eb.urgency_level,
               contact_number: eb.contact_number,
+              consultation_type: "online", // Emergency bookings are typically online
             };
           });
 
@@ -190,6 +208,47 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
         allAppointments = [...allAppointments, ...enrichedAppointments];
       }
 
+      // Add approved appointments that are within 30 mins
+      if (validApprovedAppointments.length > 0) {
+        console.log('[AppointmentManagement] Valid approved appointments found:', validApprovedAppointments.length);
+        validApprovedAppointments.forEach((apt: any) => {
+          console.log(`[AppointmentManagement] Approved apt: ${apt.id}`, {
+            status: apt.status,
+            consultation_type: apt.consultation_type,
+            appointment_date: apt.appointment_date,
+            canStartVideoCall: canStartVideoCall(apt.appointment_date)
+          });
+        });
+        
+        const patientIds = validApprovedAppointments.map((apt: any) => apt.patient_id);
+        const { data: profiles } = await (supabase as any)
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", patientIds);
+
+        const enrichedApprovedAppointments = validApprovedAppointments.map((apt: any) => {
+          const profile = (profiles as any[])?.find((p: any) => p.id === apt.patient_id);
+          return {
+            ...apt,
+            patient_name: profile?.full_name || "Patient",
+            patient_email: profile?.email || "N/A",
+            isEmergency: false,
+          };
+        });
+
+        allAppointments = [...allAppointments, ...enrichedApprovedAppointments];
+      }
+
+      console.log('[AppointmentManagement] All appointments loaded:', allAppointments.length);
+      allAppointments.forEach((apt: any) => {
+        console.log(`[AppointmentManagement] Final apt: ${apt.patient_name}`, {
+          status: apt.status,
+          consultation_type: apt.consultation_type,
+          appointment_date: apt.appointment_date,
+          isEmergency: apt.isEmergency
+        });
+      });
+      
       setAppointments(allAppointments);
       setLoading(false);
     } catch (error) {
@@ -253,9 +312,14 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
 
           if (assignError) {
             console.error("Error assigning patient:", assignError);
-            toast.error("Failed to assign patient. Please try again.");
+            toast.error(`Failed to assign patient: ${assignError.message}`);
             return;
+          } else {
+            console.log("Patient successfully assigned to doctor");
+            toast.success("Patient assigned to your profile!");
           }
+        } else {
+          console.log("Patient already assigned to doctor");
         }
       }
 
@@ -447,31 +511,50 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {apt.status === "pending" ? (
-                            <Button
-                              size="sm"
-                              variant={apt.isEmergency ? "destructive" : "default"}
-                              onClick={() => {
-                                setSelectedAppointment(apt);
-                                setDoctorNotes(apt.notes || "");
-                              }}
-                            >
-                              Review
-                            </Button>
-                          ) : apt.status === "approved" && !hasAppointmentPassed(apt.appointment_date) ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => updateAppointmentStatus(apt.id, "cancelled", apt)}
-                              className="transition-colors border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-transparent"
-                            >
-                              Cancel
-                            </Button>
-                          ) : apt.status === "approved" && hasAppointmentPassed(apt.appointment_date) ? (
-                            <Badge variant="outline">Time Passed</Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {apt.status === "pending" ? (
+                              <Button
+                                size="sm"
+                                variant={apt.isEmergency ? "destructive" : "default"}
+                                onClick={() => {
+                                  setSelectedAppointment(apt);
+                                  setDoctorNotes(apt.notes || "");
+                                }}
+                              >
+                                Review
+                              </Button>
+                            ) : apt.status === "approved" && canStartVideoCall(apt.appointment_date) ? (
+                              <>
+                                {(!apt.consultation_type || apt.consultation_type === 'online') && (
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    onClick={() => {
+                                      console.log('[AppointmentManagement] Starting video call with apt:', apt);
+                                      setSelectedAppointmentForVideo(apt);
+                                      setVideoChatOpen(true);
+                                    }}
+                                    className="bg-blue-600 hover:bg-blue-700 gap-1"
+                                  >
+                                    <Video className="h-3 w-3" />
+                                    Call
+                                  </Button>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => updateAppointmentStatus(apt.id, "cancelled", apt)}
+                                  className="transition-colors border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-transparent"
+                                >
+                                  Cancel
+                                </Button>
+                              </>
+                            ) : apt.status === "approved" && hasAppointmentPassed(apt.appointment_date) ? (
+                              <Badge variant="outline">Time Passed</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -534,15 +617,31 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
                           >
                             Review
                           </Button>
-                        ) : apt.status === "approved" && !hasAppointmentPassed(apt.appointment_date) ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateAppointmentStatus(apt.id, "cancelled", apt)}
-                            className="flex-1 transition-all border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-transparent active:scale-95 transform touch-manipulation"
-                          >
-                            Cancel
-                          </Button>
+                        ) : apt.status === "approved" && canStartVideoCall(apt.appointment_date) ? (
+                          <>
+                            {(!apt.consultation_type || apt.consultation_type === 'online') && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => {
+                                  setSelectedAppointmentForVideo(apt);
+                                  setVideoChatOpen(true);
+                                }}
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 gap-1 active:scale-95 transform transition-transform touch-manipulation"
+                              >
+                                <Video className="h-3 w-3" />
+                                Start Call
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => updateAppointmentStatus(apt.id, "cancelled", apt)}
+                              className="flex-1 transition-all border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-transparent active:scale-95 transform touch-manipulation"
+                            >
+                              Cancel
+                            </Button>
+                          </>
                         ) : apt.status === "approved" && hasAppointmentPassed(apt.appointment_date) ? (
                           <Badge variant="outline">Time Passed</Badge>
                         ) : null}
@@ -613,6 +712,22 @@ export const AppointmentManagement = ({ doctorId }: { doctorId: string }) => {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {selectedAppointmentForVideo && (
+        <VideoChatDialog
+          isOpen={videoChatOpen}
+          onClose={() => {
+            setVideoChatOpen(false);
+            setSelectedAppointmentForVideo(null);
+          }}
+          appointmentId={selectedAppointmentForVideo.id}
+          patientId={selectedAppointmentForVideo.patient_id}
+          doctorId={doctorId}
+          doctorName={selectedAppointmentForVideo.patient_name || "Patient"}
+          userRole="doctor"
+          consultationType={selectedAppointmentForVideo.consultation_type || 'offline'}
+        />
       )}
     </div>
   );
