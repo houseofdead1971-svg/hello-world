@@ -80,9 +80,9 @@ export const VideoChat = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col gap-4 p-4">
+    <div className="w-full h-full flex flex-col gap-4 p-4 min-h-0">
       {/* Video Container */}
-      <div className="flex-1 relative bg-black rounded-lg overflow-hidden min-h-[400px]">
+      <div className="flex-1 relative bg-black rounded-lg overflow-hidden min-h-[200px]">
         {/* Remote Video */}
         {remoteStream && isCallActive ? (
           <video
@@ -136,8 +136,8 @@ export const VideoChat = ({
       </div>
 
       {/* Controls */}
-      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20 flex flex-col overflow-hidden">
-        <CardContent className="pt-6 overflow-y-auto flex-1">
+      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col max-h-[35vh] overflow-hidden">
+        <CardContent className="pt-6 overflow-y-auto">
           {!isCallActive && !isCalling && !isAnswering ? (
             // Pre-Call State
             <div className="space-y-4">
