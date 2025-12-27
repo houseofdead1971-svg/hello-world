@@ -136,8 +136,8 @@ export const VideoChat = ({
       </div>
 
       {/* Controls */}
-      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20">
-        <CardContent className="pt-6">
+      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20 flex flex-col overflow-hidden">
+        <CardContent className="pt-6 overflow-y-auto flex-1">
           {!isCallActive && !isCalling && !isAnswering ? (
             // Pre-Call State
             <div className="space-y-4">
