@@ -297,72 +297,65 @@ export const useWebRTCCall = (
         }
 
         // Handle remote stream - tracks can come with or without streams
-        setState((prev) => {
-          let updatedStream: MediaStream | null = null;
+        let updatedStream: MediaStream | null = null;
 
-          if (event.streams && event.streams.length > 0) {
-            // Track came with a stream - use it
-            updatedStream = event.streams[0];
-            console.log('[WebRTC] ✅ Using stream from event, tracks:', updatedStream.getTracks().map(t => ({ 
-              kind: t.kind, 
-              id: t.id, 
+        if (event.streams && event.streams.length > 0) {
+          // Track came with a stream - use it
+          updatedStream = event.streams[0];
+          console.log('[WebRTC] ✅ Using stream from event, tracks:', updatedStream.getTracks().map(t => ({ 
+            kind: t.kind, 
+            id: t.id, 
+            enabled: t.enabled,
+            readyState: t.readyState,
+          })));
+        } else if (remoteStreamRef.current) {
+          // We already have a remote stream - add this track to it
+          const hasTrack = remoteStreamRef.current.getTracks().some(t => t.id === event.track.id);
+          if (!hasTrack) {
+            remoteStreamRef.current.addTrack(event.track);
+            console.log('[WebRTC] ✅ Added track to existing remote stream:', event.track.kind);
+            updatedStream = remoteStreamRef.current;
+          } else {
+            console.log('[WebRTC] Track already in stream, skipping');
+            return; // Track already exists, no need to update
+          }
+        } else {
+          // No existing stream and no stream in event - create new one
+          updatedStream = new MediaStream([event.track]);
+          console.log('[WebRTC] ✅ Created new remote stream from track:', event.track.kind);
+        }
+
+        if (updatedStream) {
+          // Ensure all tracks are enabled
+          updatedStream.getTracks().forEach(track => {
+            if (!track.enabled) {
+              console.warn('[WebRTC] Enabling disabled track:', track.kind);
+              track.enabled = true;
+            }
+          });
+
+          // CRITICAL: Store in ref (NOT state) to preserve MediaStream reference
+          remoteStreamRef.current = updatedStream;
+
+          // Log stream details
+          console.log('[WebRTC] 🎥 Remote stream updated in ref:', {
+            id: updatedStream.id,
+            active: updatedStream.active,
+            tracks: updatedStream.getTracks().map(t => ({
+              kind: t.kind,
+              id: t.id,
               enabled: t.enabled,
               readyState: t.readyState,
-            })));
-          } else if (prev.remoteStream || remoteStreamRef.current) {
-            // We already have a remote stream - add this track to it
-            const existingStream = remoteStreamRef.current || prev.remoteStream;
-            if (existingStream) {
-              const hasTrack = existingStream.getTracks().some(t => t.id === event.track.id);
-              if (!hasTrack) {
-                existingStream.addTrack(event.track);
-                console.log('[WebRTC] ✅ Added track to existing remote stream:', event.track.kind);
-                updatedStream = existingStream;
-                remoteStreamRef.current = existingStream;
-              } else {
-                console.log('[WebRTC] Track already in stream, skipping');
-                return prev;
-              }
-            }
-          } else {
-            // No existing stream and no stream in event - create new one
-            updatedStream = new MediaStream([event.track]);
-            console.log('[WebRTC] ✅ Created new remote stream from track:', event.track.kind);
-          }
+            })),
+          });
 
-          if (updatedStream) {
-            // Ensure all tracks are enabled
-            updatedStream.getTracks().forEach(track => {
-              if (!track.enabled) {
-                console.warn('[WebRTC] Enabling disabled track:', track.kind);
-                track.enabled = true;
-              }
-            });
-
-            // Update ref
-            remoteStreamRef.current = updatedStream;
-
-            // Create a NEW stream instance to force React re-render
-            const newStream = new MediaStream(updatedStream.getTracks());
-            
-            // Log stream details
-            console.log('[WebRTC] 🎥 Remote stream updated:', {
-              id: newStream.id,
-              active: newStream.active,
-              tracks: newStream.getTracks().map(t => ({
-                kind: t.kind,
-                id: t.id,
-                enabled: t.enabled,
-                readyState: t.readyState,
-              })),
-            });
-
-            // Force update to trigger re-render
-            return { ...prev, remoteStream: newStream };
-          }
-
-          return prev;
-        });
+          // Update state ONLY to trigger UI re-render (use a simple flag or track count)
+          // The actual stream is in the ref, not state
+          setState((prev) => ({
+            ...prev,
+            remoteStream: updatedStream, // Keep for UI, but video element will use ref
+          }));
+        }
       };
 
       peerConnection.onconnectionstatechange = () => {

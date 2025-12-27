@@ -96,16 +96,27 @@ export const VideoChat = ({
 
   // Connect local stream to video element
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+    const videoElement = localVideoRef.current;
+    if (!videoElement) return;
+
+    if (localStream) {
+      console.log('[VideoChat] Setting local video stream');
+      videoElement.srcObject = localStream;
+      videoElement.muted = true; // Mute local video to prevent feedback
+      videoElement.play().catch((err) => {
+        console.warn('[VideoChat] Local video autoplay blocked:', err);
+      });
+    } else {
+      videoElement.srcObject = null;
     }
   }, [localStream]);
 
-  // Connect remote stream to video element
+  // Connect remote stream to video element - CRITICAL FIX
   useEffect(() => {
     const videoElement = remoteVideoRef.current;
     if (!videoElement) return;
 
+    // Use remoteStream from props (which comes from state, but we'll ensure srcObject is set)
     if (remoteStream) {
       console.log('[VideoChat] 🎥 Setting remote video stream:', {
         streamId: remoteStream.id,
@@ -117,6 +128,21 @@ export const VideoChat = ({
         })),
       });
 
+      // CRITICAL: Always set srcObject when remoteStream changes
+      // React re-renders can break MediaStream references, so we always reassign
+      const currentSrcObject = videoElement.srcObject;
+      if (currentSrcObject !== remoteStream) {
+        console.log('[VideoChat] Updating video srcObject');
+        videoElement.srcObject = remoteStream;
+      } else {
+        // Even if reference is same, ensure tracks are still active
+        // Check if tracks are still in the stream
+        const hasActiveTracks = remoteStream.getTracks().some(t => t.readyState === 'live');
+        if (!hasActiveTracks) {
+          console.warn('[VideoChat] Stream has no active tracks, but srcObject is set');
+        }
+      }
+
       // Ensure all tracks are enabled
       remoteStream.getTracks().forEach(track => {
         if (!track.enabled) {
@@ -124,33 +150,33 @@ export const VideoChat = ({
           track.enabled = true;
         }
       });
-
-      // Set the stream
-      videoElement.srcObject = remoteStream;
       
-      // CRITICAL: Ensure video plays and audio is not muted
-      videoElement.muted = false;
+      // CRITICAL: Configure video element for playback
+      videoElement.muted = false; // Unmute for remote audio
       videoElement.volume = 1.0;
       videoElement.autoplay = true;
       videoElement.playsInline = true;
       
-      // Force play with multiple attempts
+      // CRITICAL: Force play - browsers require explicit play() call
       const playVideo = async () => {
         try {
           await videoElement.play();
           console.log('[VideoChat] ✅ Remote video playing successfully');
-        } catch (error) {
+        } catch (error: any) {
           console.error('[VideoChat] ❌ Error playing remote video:', error);
-          // Retry after a short delay
-          setTimeout(() => {
-            videoElement.play().catch(err => {
-              console.error('[VideoChat] ❌ Retry play failed:', err);
-            });
-          }, 500);
+          // If autoplay is blocked, try again after a short delay
+          if (error.name === 'NotAllowedError' || error.name === 'NotSupportedError') {
+            console.warn('[VideoChat] Autoplay blocked, will retry...');
+            setTimeout(() => {
+              videoElement.play().catch(err => {
+                console.error('[VideoChat] ❌ Retry play failed:', err);
+              });
+            }, 500);
+          }
         }
       };
 
-      // Handle metadata loaded
+      // Handle metadata loaded - play when ready
       const handleLoadedMetadata = () => {
         console.log('[VideoChat] ✅ Remote video metadata loaded');
         playVideo();
@@ -167,27 +193,21 @@ export const VideoChat = ({
       };
 
       // Monitor track events
-      const trackHandlers: Array<{ track: MediaStreamTrack; handlers: { [key: string]: () => void } }> = [];
+      const trackHandlers: Array<{ track: MediaStreamTrack }> = [];
       remoteStream.getTracks().forEach((track) => {
-        const handlers = {
-          onended: () => {
-            console.log('[VideoChat] ⚠️ Remote track ended:', track.kind);
-          },
-          onmute: () => {
-            console.warn('[VideoChat] ⚠️ Remote track muted:', track.kind);
-            // Try to unmute if it gets muted
-            if (track.kind === 'audio') {
-              track.enabled = true;
-            }
-          },
-          onunmute: () => {
-            console.log('[VideoChat] ✅ Remote track unmuted:', track.kind);
-          },
+        track.onended = () => {
+          console.log('[VideoChat] ⚠️ Remote track ended:', track.kind);
         };
-        track.onended = handlers.onended;
-        track.onmute = handlers.onmute;
-        track.onunmute = handlers.onunmute;
-        trackHandlers.push({ track, handlers });
+        track.onmute = () => {
+          console.warn('[VideoChat] ⚠️ Remote track muted:', track.kind);
+          if (track.kind === 'audio') {
+            track.enabled = true;
+          }
+        };
+        track.onunmute = () => {
+          console.log('[VideoChat] ✅ Remote track unmuted:', track.kind);
+        };
+        trackHandlers.push({ track });
       });
 
       // Add event listeners
@@ -214,7 +234,7 @@ export const VideoChat = ({
       console.log('[VideoChat] Clearing remote video');
       videoElement.srcObject = null;
     }
-  }, [remoteStream]);
+  }, [remoteStream]); // Re-run whenever remoteStream changes
 
   // Handle fullscreen
   const toggleFullscreen = () => {
