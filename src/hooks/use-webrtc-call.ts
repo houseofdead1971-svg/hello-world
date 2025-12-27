@@ -261,13 +261,20 @@ export const useWebRTCCall = (
       };
 
       peerConnection.ontrack = (event) => {
-        console.log('[WebRTC] Remote track received:', {
+        console.log('[WebRTC] 🔴 Remote track received:', {
           kind: event.track.kind,
           id: event.track.id,
           enabled: event.track.enabled,
           readyState: event.track.readyState,
           streamsCount: event.streams?.length || 0,
+          transceiver: event.transceiver?.mid,
         });
+
+        // CRITICAL: Ensure track is enabled
+        if (!event.track.enabled) {
+          console.warn('[WebRTC] Track is disabled, enabling it');
+          event.track.enabled = true;
+        }
 
         // Handle remote stream - tracks can come with or without streams
         setState((prev) => {
@@ -276,13 +283,18 @@ export const useWebRTCCall = (
           if (event.streams && event.streams.length > 0) {
             // Track came with a stream - use it
             updatedStream = event.streams[0];
-            console.log('[WebRTC] Using stream from event, tracks:', updatedStream.getTracks().map(t => ({ kind: t.kind, id: t.id, enabled: t.enabled })));
+            console.log('[WebRTC] ✅ Using stream from event, tracks:', updatedStream.getTracks().map(t => ({ 
+              kind: t.kind, 
+              id: t.id, 
+              enabled: t.enabled,
+              readyState: t.readyState,
+            })));
           } else if (prev.remoteStream) {
             // We already have a remote stream - add this track to it
             const hasTrack = prev.remoteStream.getTracks().some(t => t.id === event.track.id);
             if (!hasTrack) {
               prev.remoteStream.addTrack(event.track);
-              console.log('[WebRTC] Added track to existing remote stream:', event.track.kind);
+              console.log('[WebRTC] ✅ Added track to existing remote stream:', event.track.kind);
               updatedStream = prev.remoteStream;
             } else {
               console.log('[WebRTC] Track already in stream, skipping');
@@ -291,12 +303,20 @@ export const useWebRTCCall = (
           } else {
             // No existing stream and no stream in event - create new one
             updatedStream = new MediaStream([event.track]);
-            console.log('[WebRTC] Created new remote stream from track:', event.track.kind);
+            console.log('[WebRTC] ✅ Created new remote stream from track:', event.track.kind);
           }
 
           if (updatedStream) {
+            // Ensure all tracks are enabled
+            updatedStream.getTracks().forEach(track => {
+              if (!track.enabled) {
+                console.warn('[WebRTC] Enabling disabled track:', track.kind);
+                track.enabled = true;
+              }
+            });
+
             // Log stream details
-            console.log('[WebRTC] Remote stream updated:', {
+            console.log('[WebRTC] 🎥 Remote stream updated:', {
               id: updatedStream.id,
               active: updatedStream.active,
               tracks: updatedStream.getTracks().map(t => ({
@@ -307,7 +327,8 @@ export const useWebRTCCall = (
               })),
             });
 
-            return { ...prev, remoteStream: updatedStream };
+            // Force update to trigger re-render
+            return { ...prev, remoteStream: new MediaStream(updatedStream.getTracks()) };
           }
 
           return prev;
@@ -708,8 +729,26 @@ export const useWebRTCCall = (
   // Get available cameras
   const getAvailableCameras = useCallback(async (): Promise<MediaDeviceInfo[]> => {
     try {
+      // Request permissions first (required for mobile devices to get labels)
+      // This is a no-op if permissions are already granted
+      try {
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        // Stop the temporary stream immediately
+        tempStream.getTracks().forEach(track => track.stop());
+      } catch (e) {
+        console.warn('[WebRTC] Could not request permissions for camera enumeration:', e);
+        // Continue anyway - we might still get device IDs
+      }
+
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cameras = devices.filter(device => device.kind === 'videoinput');
+      
+      console.log('[WebRTC] Available cameras:', cameras.map(c => ({
+        deviceId: c.deviceId,
+        label: c.label || 'Unnamed Camera',
+        groupId: c.groupId,
+      })));
+
       setState((prev) => ({ ...prev, availableCameras: cameras }));
       return cameras;
     } catch (error) {
@@ -726,42 +765,89 @@ export const useWebRTCCall = (
         throw new Error('No active call or stream');
       }
 
-      // Get new stream with selected camera
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: deviceId } },
+      console.log('[WebRTC] Switching camera to:', deviceId);
+
+      // Detect mobile device
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      // Get new stream with selected camera - use mobile-friendly constraints
+      const constraints: MediaStreamConstraints = {
+        video: isMobile 
+          ? { 
+              deviceId: { exact: deviceId },
+              facingMode: undefined, // Let device choose
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            }
+          : { 
+              deviceId: { exact: deviceId },
+            },
         audio: true,
+      };
+
+      console.log('[WebRTC] Camera constraints:', constraints);
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      // Get the new video track
+      const videoTrack = newStream.getVideoTracks()[0];
+      if (!videoTrack) {
+        throw new Error('No video track in new stream');
+      }
+
+      console.log('[WebRTC] New video track:', {
+        id: videoTrack.id,
+        label: videoTrack.label,
+        enabled: videoTrack.enabled,
+        readyState: videoTrack.readyState,
       });
 
-      // Replace video tracks
-      const videoTrack = newStream.getVideoTracks()[0];
+      // Get old video track
       const oldVideoTrack = state.localStream.getVideoTracks()[0];
       
-      if (oldVideoTrack) {
-        state.localStream.removeTrack(oldVideoTrack);
-        oldVideoTrack.stop();
-      }
-      
-      state.localStream.addTrack(videoTrack);
-
-      // Update peer connection
+      // Find the video sender in peer connection
       const sender = peerConnection.getSenders().find(s => 
         s.track && s.track.kind === 'video'
       );
       
-      if (sender) {
-        await sender.replaceTrack(videoTrack);
+      if (!sender) {
+        throw new Error('No video sender found in peer connection');
       }
 
+      // Replace track in peer connection FIRST (before updating local stream)
+      console.log('[WebRTC] Replacing track in peer connection');
+      await sender.replaceTrack(videoTrack);
+
+      // Update local stream
+      if (oldVideoTrack) {
+        state.localStream.removeTrack(oldVideoTrack);
+        oldVideoTrack.stop();
+        console.log('[WebRTC] Old video track stopped');
+      }
+      
+      state.localStream.addTrack(videoTrack);
+      console.log('[WebRTC] New video track added to local stream');
+
+      // Stop other tracks from new stream (we only need the video track)
+      newStream.getAudioTracks().forEach(track => track.stop());
+      newStream.getVideoTracks().forEach(track => {
+        if (track.id !== videoTrack.id) {
+          track.stop();
+        }
+      });
+
+      // Update state with new stream reference to trigger re-render
       setState((prev) => ({ 
         ...prev, 
-        localStream: state.localStream,
+        localStream: new MediaStream(state.localStream.getTracks()),
         selectedCameraId: deviceId 
       }));
 
+      console.log('[WebRTC] ✅ Camera switched successfully');
       toast.success('Camera switched');
     } catch (error) {
-      console.error('[WebRTC] Error switching camera:', error);
-      toast.error('Failed to switch camera');
+      console.error('[WebRTC] ❌ Error switching camera:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to switch camera: ${errorMessage}`);
       throw error;
     }
   }, [state.localStream]);

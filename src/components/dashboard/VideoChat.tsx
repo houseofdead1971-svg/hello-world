@@ -103,8 +103,11 @@ export const VideoChat = ({
 
   // Connect remote stream to video element
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      console.log('[VideoChat] Setting remote video stream:', {
+    const videoElement = remoteVideoRef.current;
+    if (!videoElement) return;
+
+    if (remoteStream) {
+      console.log('[VideoChat] 🎥 Setting remote video stream:', {
         streamId: remoteStream.id,
         active: remoteStream.active,
         tracks: remoteStream.getTracks().map(t => ({
@@ -114,41 +117,102 @@ export const VideoChat = ({
         })),
       });
 
-      remoteVideoRef.current.srcObject = remoteStream;
-      
-      // Ensure video plays and audio is not muted
-      remoteVideoRef.current.muted = false;
-      remoteVideoRef.current.volume = 1.0;
-      
-      // Play the video explicitly
-      remoteVideoRef.current.play().catch((error) => {
-        console.error('[VideoChat] Error playing remote video:', error);
+      // Ensure all tracks are enabled
+      remoteStream.getTracks().forEach(track => {
+        if (!track.enabled) {
+          console.warn('[VideoChat] Enabling disabled remote track:', track.kind);
+          track.enabled = true;
+        }
       });
 
-      // Log when video starts playing
-      remoteVideoRef.current.onloadedmetadata = () => {
-        console.log('[VideoChat] Remote video metadata loaded');
+      // Set the stream
+      videoElement.srcObject = remoteStream;
+      
+      // CRITICAL: Ensure video plays and audio is not muted
+      videoElement.muted = false;
+      videoElement.volume = 1.0;
+      videoElement.autoplay = true;
+      videoElement.playsInline = true;
+      
+      // Force play with multiple attempts
+      const playVideo = async () => {
+        try {
+          await videoElement.play();
+          console.log('[VideoChat] ✅ Remote video playing successfully');
+        } catch (error) {
+          console.error('[VideoChat] ❌ Error playing remote video:', error);
+          // Retry after a short delay
+          setTimeout(() => {
+            videoElement.play().catch(err => {
+              console.error('[VideoChat] ❌ Retry play failed:', err);
+            });
+          }, 500);
+        }
       };
 
-      remoteVideoRef.current.onplay = () => {
-        console.log('[VideoChat] Remote video started playing');
+      // Handle metadata loaded
+      const handleLoadedMetadata = () => {
+        console.log('[VideoChat] ✅ Remote video metadata loaded');
+        playVideo();
+      };
+
+      // Handle play event
+      const handlePlay = () => {
+        console.log('[VideoChat] ✅ Remote video started playing');
+      };
+
+      // Handle error
+      const handleError = (e: Event) => {
+        console.error('[VideoChat] ❌ Remote video error:', e);
       };
 
       // Monitor track events
+      const trackHandlers: Array<{ track: MediaStreamTrack; handlers: { [key: string]: () => void } }> = [];
       remoteStream.getTracks().forEach((track) => {
-        track.onended = () => {
-          console.log('[VideoChat] Remote track ended:', track.kind);
+        const handlers = {
+          onended: () => {
+            console.log('[VideoChat] ⚠️ Remote track ended:', track.kind);
+          },
+          onmute: () => {
+            console.warn('[VideoChat] ⚠️ Remote track muted:', track.kind);
+            // Try to unmute if it gets muted
+            if (track.kind === 'audio') {
+              track.enabled = true;
+            }
+          },
+          onunmute: () => {
+            console.log('[VideoChat] ✅ Remote track unmuted:', track.kind);
+          },
         };
-        track.onmute = () => {
-          console.warn('[VideoChat] Remote track muted:', track.kind);
-        };
-        track.onunmute = () => {
-          console.log('[VideoChat] Remote track unmuted:', track.kind);
-        };
+        track.onended = handlers.onended;
+        track.onmute = handlers.onmute;
+        track.onunmute = handlers.onunmute;
+        trackHandlers.push({ track, handlers });
       });
-    } else if (remoteVideoRef.current && !remoteStream) {
+
+      // Add event listeners
+      videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+      videoElement.addEventListener('play', handlePlay);
+      videoElement.addEventListener('error', handleError);
+
+      // Try to play immediately
+      playVideo();
+
+      // Cleanup function
+      return () => {
+        videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        videoElement.removeEventListener('play', handlePlay);
+        videoElement.removeEventListener('error', handleError);
+        trackHandlers.forEach(({ track }) => {
+          track.onended = null;
+          track.onmute = null;
+          track.onunmute = null;
+        });
+      };
+    } else {
       // Clear video when stream is removed
-      remoteVideoRef.current.srcObject = null;
+      console.log('[VideoChat] Clearing remote video');
+      videoElement.srcObject = null;
     }
   }, [remoteStream]);
 
@@ -543,20 +607,27 @@ export const VideoChat = ({
                 </Button>
               </div>
 
-              {/* Camera Selection Dropdown */}
+              {/* Camera Selection Dropdown - Mobile Friendly */}
               {showSettings && availableCameras.length > 1 && (
                 <div className="bg-slate-100 dark:bg-slate-900 rounded-lg p-3">
                   <p className="text-xs sm:text-sm font-medium mb-2">Switch Camera:</p>
                   <Select
                     value={selectedCameraId || availableCameras[0]?.deviceId}
-                    onValueChange={handleSwitchCamera}
+                    onValueChange={(value) => {
+                      console.log('[VideoChat] Camera selection changed:', value);
+                      handleSwitchCamera(value);
+                    }}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full h-9 sm:h-10 text-xs sm:text-sm">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[200px] z-50">
                       {availableCameras.map((camera) => (
-                        <SelectItem key={camera.deviceId} value={camera.deviceId}>
+                        <SelectItem 
+                          key={camera.deviceId} 
+                          value={camera.deviceId}
+                          className="text-xs sm:text-sm py-2"
+                        >
                           {camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}
                         </SelectItem>
                       ))}
