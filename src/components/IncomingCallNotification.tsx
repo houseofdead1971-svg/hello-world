@@ -73,50 +73,52 @@ export const IncomingCallNotification = ({
         )}
       >
         {/* Notification Card */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-2xl p-6 mx-4 mt-4 rounded-2xl">
-          <div className="flex items-center justify-between max-w-2xl mx-auto">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-2xl p-3 sm:p-6 mx-2 sm:mx-4 mt-2 sm:mt-4 rounded-lg sm:rounded-2xl">
+          <div className="flex items-center justify-between gap-2 sm:gap-4 flex-col sm:flex-row">
             {/* Caller Info */}
-            <div className="flex items-center gap-4 flex-1">
-              <div className="relative">
-                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center animate-pulse">
-                  <Phone className="w-8 h-8" />
+            <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+              <div className="relative flex-shrink-0">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-full flex items-center justify-center animate-pulse">
+                  <Phone className="w-6 h-6 sm:w-8 sm:h-8" />
                 </div>
-                <div className="absolute inset-0 w-16 h-16 border-4 border-white/30 rounded-full animate-pulse" />
+                <div className="absolute inset-0 w-12 h-12 sm:w-16 sm:h-16 border-4 border-white/30 rounded-full animate-pulse" />
               </div>
 
-              <div>
-                <p className="text-2xl font-bold">{callerName}</p>
-                <p className="text-blue-100 text-sm">Incoming Video Call</p>
-                <p className="text-blue-100 text-xs mt-1 opacity-75">Appointment ID: {appointmentId}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg sm:text-2xl font-bold truncate">{callerName}</p>
+                <p className="text-blue-100 text-xs sm:text-sm">Incoming Video Call</p>
+                <p className="text-blue-100 text-xs mt-0.5 sm:mt-1 opacity-75 truncate">Appointment: {appointmentId.slice(0, 8)}...</p>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 ml-4 flex-shrink-0">
+            <div className="flex gap-2 sm:gap-3 w-full sm:w-auto flex-shrink-0 mt-3 sm:mt-0 sm:ml-4">
               <Button
                 onClick={onAnswer}
-                className="bg-green-500 hover:bg-green-600 text-white font-bold px-8 py-3 rounded-full flex items-center gap-2 transition-all hover:scale-105 shadow-lg"
+                className="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold px-4 sm:px-8 py-2 sm:py-3 rounded-full flex items-center justify-center sm:justify-start gap-2 transition-all hover:scale-105 shadow-lg text-sm sm:text-base"
               >
-                <Phone className="w-5 h-5" />
+                <Phone className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="hidden sm:inline">Answer</span>
+                <span className="sm:hidden">Answer</span>
               </Button>
               <Button
                 onClick={onDecline}
-                className="bg-red-500 hover:bg-red-600 text-white font-bold px-8 py-3 rounded-full flex items-center gap-2 transition-all hover:scale-105 shadow-lg"
+                className="flex-1 sm:flex-none bg-red-500 hover:bg-red-600 text-white font-bold px-4 sm:px-8 py-2 sm:py-3 rounded-full flex items-center justify-center sm:justify-start gap-2 transition-all hover:scale-105 shadow-lg text-sm sm:text-base"
               >
-                <PhoneOff className="w-5 h-5" />
+                <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="hidden sm:inline">Decline</span>
+                <span className="sm:hidden">Decline</span>
               </Button>
             </div>
           </div>
 
           {/* Ringing Indicator */}
-          <div className="flex gap-1 justify-center mt-4">
+          <div className="flex gap-1 justify-center mt-3 sm:mt-4">
             {[0, 1, 2].map((i) => (
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any, tailwindcss/no-custom-classname
               <div
                 key={i}
-                className="w-2 h-2 bg-white/60 rounded-full animate-bounce"
+                className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-white/60 rounded-full animate-bounce"
                 style={{ animationDelay: `${i * 0.1}s` } as any}
               />
             ))}

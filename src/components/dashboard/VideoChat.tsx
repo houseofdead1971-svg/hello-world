@@ -46,17 +46,27 @@ export const VideoChat = ({
   const [copied, setCopied] = useState(false);
   const [expandRemote, setExpandRemote] = useState(false);
 
-  // Connect local stream to video element
+  // Connect local stream to video element and clear when stream ends
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+    if (localVideoRef.current) {
+      if (localStream) {
+        localVideoRef.current.srcObject = localStream;
+      } else {
+        // Clear video element when stream is null
+        localVideoRef.current.srcObject = null;
+      }
     }
   }, [localStream]);
 
-  // Connect remote stream to video element
+  // Connect remote stream to video element and clear when stream ends
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteVideoRef.current) {
+      if (remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+      } else {
+        // Clear video element when stream is null
+        remoteVideoRef.current.srcObject = null;
+      }
     }
   }, [remoteStream]);
 
@@ -80,9 +90,9 @@ export const VideoChat = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col gap-4 p-4 min-h-0">
+    <div className="w-full h-full flex flex-col gap-3 sm:gap-4 p-3 sm:p-4 min-h-0">
       {/* Video Container */}
-      <div className="flex-1 relative bg-black rounded-lg overflow-hidden min-h-[200px]">
+      <div className="flex-1 relative bg-black rounded-lg overflow-hidden min-h-[150px] sm:min-h-[300px]">
         {/* Remote Video */}
         {remoteStream && isCallActive ? (
           <video
@@ -92,13 +102,13 @@ export const VideoChat = ({
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 px-4">
             <div className="text-center">
-              <div className="text-4xl mb-4">📞</div>
-              <p className="text-white mb-2">
+              <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">📞</div>
+              <p className="text-white mb-1 sm:mb-2 text-sm sm:text-base">
                 {isCalling ? 'Calling...' : isAnswering ? 'Ready to answer' : 'Waiting for connection'}
               </p>
-              <p className="text-sm text-gray-400">{doctorName}</p>
+              <p className="text-xs sm:text-sm text-gray-400 truncate max-w-xs">{doctorName}</p>
             </div>
           </div>
         )}
@@ -106,8 +116,10 @@ export const VideoChat = ({
         {/* Local Video - Picture in Picture */}
         <div
           className={cn(
-            'absolute bottom-4 right-4 rounded-lg overflow-hidden border-2 border-primary cursor-pointer transition-all hover:scale-105',
-            expandRemote ? 'w-32 h-24' : 'w-48 h-36'
+            'absolute rounded-lg overflow-hidden border-2 border-primary cursor-pointer transition-all hover:scale-105',
+            expandRemote 
+              ? 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-20 h-16 sm:w-32 sm:h-24' 
+              : 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-24 h-20 sm:w-48 sm:h-36'
           )}
           onClick={() => setExpandRemote(!expandRemote)}
         >
@@ -129,136 +141,133 @@ export const VideoChat = ({
 
         {/* Call Status Badge */}
         {isCallActive && (
-          <div className="absolute top-4 left-4 bg-green-500/80 text-white px-3 py-1 rounded-full text-sm font-semibold animate-pulse">
+          <div className="absolute top-2 left-2 sm:top-4 sm:left-4 bg-green-500/80 text-white px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-semibold animate-pulse">
             Call Active
           </div>
         )}
       </div>
 
       {/* Controls */}
-      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col max-h-[35vh] overflow-hidden">
-        <CardContent className="pt-6 overflow-y-auto">
+      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col max-h-[50vh] sm:max-h-[40vh] overflow-hidden">
+        <CardContent className="pt-3 sm:pt-4 overflow-y-auto flex-1 pb-2 sm:pb-3">
           {!isCallActive && !isCalling && !isAnswering ? (
             // Pre-Call State
-            <div className="space-y-4">
+            <div className="space-y-2 sm:space-y-3">
               {error && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                  <p className="text-sm font-medium text-red-600 mb-2">❌ Error:</p>
-                  <p className="text-sm text-red-700">{error}</p>
-                  <p className="text-xs text-red-600 mt-2 font-medium">
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs sm:p-3 sm:text-sm">
+                  <p className="font-medium text-red-600 mb-0.5 sm:mb-1">❌ Error:</p>
+                  <p className="text-red-700 mb-0.5 sm:mb-1">{error}</p>
+                  <p className="text-red-600 font-medium">
                     💡 Solution: Check if your camera/microphone are enabled and not in use by another app. Refresh and try again.
                   </p>
                 </div>
               )}
 
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-3 rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition">
+              <div className="space-y-1 sm:space-y-2">
+                <label className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-2 sm:p-3 rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition">
                   <input
                     type="checkbox"
                     checked={cameraOffMode}
                     onChange={(e) => setCameraOffMode(e.target.checked)}
-                    className="w-4 h-4"
+                    className="w-4 h-4 flex-shrink-0"
                   />
-                  <span className="text-sm font-medium">{cameraOffMode ? '📹 Camera OFF' : '📹 Camera ON'}</span>
+                  <span className="text-xs sm:text-sm font-medium truncate">{cameraOffMode ? '📹 Camera OFF' : '📹 Camera ON'}</span>
                 </label>
                 <p className="text-xs text-muted-foreground px-1">
-                  {cameraOffMode ? 'You can turn camera on during the call' : 'Turn camera off if you prefer not to share video'}
+                  {cameraOffMode ? 'Turn camera on during call' : 'Share your camera with doctor'}
                 </p>
               </div>
 
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => {
-                    if (cameraOffMode) {
-                      setVideoEnabled(false);
-                    }
-                    onStartCall();
-                  }}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2"
-                  disabled={isCalling || !!error}
-                >
-                  <Phone className="h-4 w-4" />
-                  {isCalling ? 'Connecting...' : userRole === 'doctor' ? 'Start Call' : 'Call Doctor'}
-                </Button>
-              </div>
+              <Button
+                onClick={() => {
+                  if (cameraOffMode) {
+                    setVideoEnabled(false);
+                  }
+                  onStartCall();
+                }}
+                className="w-full bg-green-600 hover:bg-green-700 text-white gap-2 text-xs sm:text-base py-2"
+                disabled={isCalling || !!error}
+              >
+                <Phone className="h-3 w-3 sm:h-4 sm:w-4" />
+                {isCalling ? 'Connecting...' : userRole === 'doctor' ? 'Start Call' : 'Call Doctor'}
+              </Button>
 
               {userRole === 'patient' && (
-                <div className="text-sm text-muted-foreground text-center">
-                  <p>Click the button above to initiate the video call</p>
-                  <p className="text-xs mt-1">Your microphone must be enabled</p>
+                <div className="text-xs text-muted-foreground text-center leading-snug">
+                  <p>Click to initiate the call</p>
+                  <p>Microphone must be enabled</p>
                 </div>
               )}
 
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-sm">
-                <p className="font-medium text-blue-600 mb-2">📋 Permission Instructions:</p>
-                <ul className="text-xs space-y-1 text-blue-700">
-                  <li>✓ Click "Allow" when your browser asks for camera/microphone access</li>
-                  <li>✓ You can join with camera OFF if you prefer</li>
-                  <li>✓ Check your browser's permission settings if you see "blocked"</li>
-                  <li>✓ Close other apps using your camera</li>
-                  <li>✓ You can toggle camera/audio during the call</li>
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 text-xs sm:p-3 sm:text-sm">
+                <p className="font-medium text-blue-600 mb-1">📋 Permission:</p>
+                <ul className="text-xs space-y-0.5 text-blue-700 leading-snug">
+                  <li>✓ Allow camera/microphone when asked</li>
+                  <li>✓ Can join with camera OFF</li>
+                  <li>✓ Check browser settings if blocked</li>
+                  <li>✓ Close other camera apps</li>
+                  <li>✓ Toggle during call</li>
                 </ul>
               </div>
             </div>
           ) : isAnswering ? (
             // Incoming Call State - with camera preference setup
-            <div className="space-y-4">
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                <p className="text-center font-semibold mb-4 text-blue-500">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 sm:p-4">
+                <p className="text-center font-semibold mb-2 sm:mb-4 text-blue-500 text-sm sm:text-base truncate">
                   📞 Incoming call from {doctorName}
                 </p>
-                <p className="text-center text-sm text-blue-600">
-                  Check your notifications at the top of the screen to answer or decline
+                <p className="text-center text-xs sm:text-sm text-blue-600">
+                  Check notifications above to answer or decline
                 </p>
               </div>
 
               <div className="space-y-2">
-                <label className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-3 rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition">
+                <label className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-2 sm:p-3 rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition">
                   <input
                     type="checkbox"
                     checked={cameraOffMode}
                     onChange={(e) => setCameraOffMode(e.target.checked)}
                     className="w-4 h-4"
                   />
-                  <span className="text-sm font-medium">{cameraOffMode ? '📹 Camera OFF' : '📹 Camera ON'}</span>
+                  <span className="text-xs sm:text-sm font-medium truncate">{cameraOffMode ? '📹 Camera OFF' : '📹 Camera ON'}</span>
                 </label>
                 <p className="text-xs text-muted-foreground px-1">
-                  {cameraOffMode ? 'Join without sharing video' : 'Share your camera with the doctor'}
+                  {cameraOffMode ? 'Join without sharing' : 'Share your camera'}
                 </p>
               </div>
 
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-sm">
-                <p className="font-medium text-amber-600 mb-2">⏫ Answer Call Buttons:</p>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
+                <p className="font-medium text-amber-600 mb-1 sm:mb-2">⏫ Answer Call:</p>
                 <p className="text-xs text-amber-700">
-                  Use the green and red buttons in the notification banner at the top of your screen to answer or decline this incoming call.
+                  Use the notification banner above to answer or decline.
                 </p>
               </div>
             </div>
           ) : isCalling ? (
             // Calling State
-            <div className="space-y-4">
-              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-                <p className="text-center font-semibold text-yellow-600 animate-pulse">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 sm:p-4">
+                <p className="text-center font-semibold text-yellow-600 animate-pulse text-sm sm:text-base truncate">
                   Calling {doctorName}...
                 </p>
-                <p className="text-center text-xs text-yellow-600 mt-2">
+                <p className="text-center text-xs text-yellow-600 mt-1 sm:mt-2">
                   Waiting for {userRole === 'doctor' ? 'patient' : 'doctor'} to answer...
                 </p>
               </div>
 
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-sm">
-                <p className="font-medium text-blue-600 mb-2">⏳ Waiting for Response:</p>
-                <ul className="text-xs space-y-1 text-blue-700">
-                  <li>✓ {userRole === 'doctor' ? 'Patient' : 'Doctor'} needs to open the call dialog</li>
-                  <li>✓ They will see your incoming call</li>
-                  <li>✓ They need to click "Answer Call" to connect</li>
-                  <li>✓ Call will timeout in 30 seconds if not answered</li>
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
+                <p className="font-medium text-blue-600 mb-1 sm:mb-2">⏳ Waiting:</p>
+                <ul className="text-xs space-y-0.5 text-blue-700">
+                  <li>✓ They need to open the call</li>
+                  <li>✓ Click "Answer" to connect</li>
+                  <li>✓ Timeout in 30 seconds</li>
                 </ul>
               </div>
 
               <Button
                 onClick={onEndCall}
-                className="w-full bg-red-600 hover:bg-red-700 text-white gap-2"
+                className="w-full bg-red-600 hover:bg-red-700 text-white gap-2 text-sm sm:text-base"
               >
                 <PhoneOff className="h-4 w-4" />
                 Cancel
@@ -266,29 +275,31 @@ export const VideoChat = ({
             </div>
           ) : (
             // Active Call State
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {/* Call Duration & Info */}
-              <div className="text-center mb-4">
-                <p className="text-sm text-muted-foreground">Connected with {doctorName}</p>
+              <div className="text-center mb-2 sm:mb-4">
+                <p className="text-xs sm:text-sm text-muted-foreground truncate">Connected with {doctorName}</p>
               </div>
 
               {/* Media Controls */}
-              <div className="flex gap-2 justify-center">
+              <div className="flex gap-1 sm:gap-2 justify-center flex-wrap">
                 <Button
                   onClick={handleToggleAudio}
                   variant={audioEnabled ? 'default' : 'destructive'}
-                  size="lg"
-                  className="gap-2"
+                  size="sm"
+                  className="gap-1 text-xs sm:text-sm sm:size-lg flex-1 min-w-[80px]"
                 >
                   {audioEnabled ? (
                     <>
-                      <Mic className="h-4 w-4" />
-                      Mute
+                      <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline">Mute</span>
+                      <span className="sm:hidden">Mute</span>
                     </>
                   ) : (
                     <>
-                      <MicOff className="h-4 w-4" />
-                      Unmute
+                      <MicOff className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline">Unmute</span>
+                      <span className="sm:hidden">Unmute</span>
                     </>
                   )}
                 </Button>
@@ -296,18 +307,20 @@ export const VideoChat = ({
                 <Button
                   onClick={handleToggleVideo}
                   variant={videoEnabled ? 'default' : 'destructive'}
-                  size="lg"
-                  className="gap-2"
+                  size="sm"
+                  className="gap-1 text-xs sm:text-sm sm:size-lg flex-1 min-w-[80px]"
                 >
                   {videoEnabled ? (
                     <>
-                      <Video className="h-4 w-4" />
-                      Stop Video
+                      <Video className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline">Stop</span>
+                      <span className="sm:hidden">Stop</span>
                     </>
                   ) : (
                     <>
-                      <VideoOff className="h-4 w-4" />
-                      Start Video
+                      <VideoOff className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline">Start</span>
+                      <span className="sm:hidden">Start</span>
                     </>
                   )}
                 </Button>
@@ -315,35 +328,34 @@ export const VideoChat = ({
                 <Button
                   onClick={onEndCall}
                   variant="destructive"
-                  size="lg"
-                  className="gap-2"
+                  size="sm"
+                  className="gap-1 text-xs sm:text-sm sm:size-lg flex-1 min-w-[80px]"
                 >
-                  <PhoneOff className="h-4 w-4" />
-                  End Call
+                  <PhoneOff className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">End</span>
+                  <span className="sm:hidden">End</span>
                 </Button>
               </div>
 
               {/* Appointment ID */}
-              <div className="bg-slate-100 dark:bg-slate-900 rounded-lg p-3 flex items-center justify-between">
-                <div>
+              <div className="bg-slate-100 dark:bg-slate-900 rounded-lg p-2 sm:p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Appointment ID</p>
-                  <p className="font-mono text-sm font-semibold">{appointmentId.slice(0, 12)}...</p>
+                  <p className="font-mono text-xs sm:text-sm font-semibold truncate">{appointmentId.slice(0, 10)}...</p>
                 </div>
                 <Button
                   onClick={handleCopyAppointmentId}
                   size="sm"
                   variant="ghost"
-                  className="gap-1"
+                  className="gap-1 flex-shrink-0"
                 >
                   {copied ? (
                     <>
-                      <Check className="h-4 w-4 text-green-500" />
-                      Copied
+                      <Check className="h-3 w-3 sm:h-4 sm:w-4 text-green-500" />
                     </>
                   ) : (
                     <>
-                      <Copy className="h-4 w-4" />
-                      Copy
+                      <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
                     </>
                   )}
                 </Button>
@@ -355,7 +367,7 @@ export const VideoChat = ({
 
       {/* Info Message */}
       {!isCallActive && (
-        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm text-blue-900 dark:text-blue-200">
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-2 sm:p-3 text-xs sm:text-sm text-blue-900 dark:text-blue-200">
           <p className="font-semibold mb-1">💡 Video Call Tips:</p>
           <ul className="list-disc list-inside space-y-0.5 text-xs">
             <li>Ensure your camera and microphone are working</li>
