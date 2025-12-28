@@ -47,6 +47,7 @@ export const useWebRTCCall = (
   const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const channelReadyRef = useRef<Promise<void>>(Promise.resolve());
   const resolveChannelReadyRef = useRef<(() => void) | null>(null);
+  const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
 
   const configuration = {
     iceServers: [
@@ -280,31 +281,28 @@ export const useWebRTCCall = (
     try {
       setState((prev) => ({ ...prev, isAnswering: true, error: null }));
 
-      // Verify peer connection exists and is in correct state
-      let peerConnection = peerConnectionRef.current;
-      if (!peerConnection) {
-        throw new Error('Peer connection not initialized. Please wait a moment and try again.');
+      const pc = peerConnectionRef.current;
+
+      if (!pc) {
+        throw new Error('PeerConnection not initialized. Please wait a moment and try again.');
       }
 
-      console.log('[WebRTC] Answer call - peer connection state:', {
-        connectionState: peerConnection.connectionState,
-        signalingState: peerConnection.signalingState,
-        iceConnectionState: peerConnection.iceConnectionState,
-      });
+      console.log('[WebRTC] Answer call - signaling state:', pc.signalingState, 'connection state:', pc.connectionState);
 
-      // If not in have-remote-offer state, something is wrong
-      if (peerConnection.signalingState !== 'have-remote-offer') {
-        console.warn('[WebRTC] Peer connection not in have-remote-offer state:', peerConnection.signalingState);
-        // Try to recover by closing and starting fresh
-        peerConnection.close();
-        peerConnectionRef.current = null;
-        throw new Error('Call setup incomplete. Please try again.');
+      if (pc.signalingState !== 'have-remote-offer') {
+        console.warn('[WebRTC] Invalid state for answer:', pc.signalingState);
+        setState((prev) => ({
+          ...prev,
+          isAnswering: false,
+          error: 'Call setup incomplete. Please try again.',
+          incomingCall: false,
+        }));
+        return;
       }
 
-      // Get local media stream with better error handling
+      // Get local media stream
       let stream: MediaStream;
       try {
-        // Always request video and audio - we can disable tracks later
         stream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: true,
@@ -312,7 +310,6 @@ export const useWebRTCCall = (
       } catch (mediaError: any) {
         console.error('[WebRTC] getUserMedia error:', mediaError);
         
-        // Handle specific permission errors
         if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
           throw new Error('Camera/Microphone permission denied. Please allow access in your browser settings and try again.');
         } else if (mediaError.name === 'NotFoundError' || mediaError.name === 'DevicesNotFoundError') {
@@ -330,18 +327,17 @@ export const useWebRTCCall = (
 
       // Add tracks to peer connection
       stream.getTracks().forEach((track) => {
-        console.log('[WebRTC] Adding track to answer:', track.kind, 'enabled:', track.enabled);
-        peerConnection.addTrack(track, stream);
+        console.log('[WebRTC] Adding track:', track.kind);
+        pc.addTrack(track, stream);
       });
 
-      // Create answer - should work now since we're in have-remote-offer state
+      // Create answer - now safe because state is verified
       console.log('[WebRTC] Creating answer...');
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
 
-      console.log('[WebRTC] Sending answer, signalingState:', peerConnection.signalingState);
-      
-      // Ensure channel is ready before sending
+      console.log('[WebRTC] Sending answer, signalingState:', pc.signalingState);
+
       if (!signalChannelRef.current) {
         throw new Error('Signaling channel disconnected. Please try again.');
       }
@@ -350,17 +346,16 @@ export const useWebRTCCall = (
         type: 'broadcast',
         event: 'answer',
         payload: {
-          sdp: peerConnection.localDescription?.sdp,
           type: 'answer',
+          sdp: answer.sdp,
         },
       });
 
-      // Don't set isCallActive here - let connectionState change event handle it
       setState((prev) => ({ ...prev, isAnswering: false }));
       toast.success('Call answered');
     } catch (error) {
-      console.error('[WebRTC] Error answering call:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[WebRTC] Answer failed:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unable to answer call';
       setState((prev) => ({
         ...prev,
         isAnswering: false,
@@ -450,32 +445,37 @@ export const useWebRTCCall = (
         try {
           console.log('[WebRTC] Received offer, current signalingState:', peerConnectionRef.current?.signalingState);
           
-          // Create fresh peer connection for incoming call
-          if (peerConnectionRef.current) {
-            console.log('[WebRTC] Closing existing peer connection');
-            peerConnectionRef.current.close();
+          // Ensure peer connection exists - create only once
+          if (!peerConnectionRef.current) {
+            console.log('[WebRTC] Creating peer connection for incoming call');
+            peerConnectionRef.current = initializePeerConnection();
           }
-          
-          const peerConnection = initializePeerConnection();
-          console.log('[WebRTC] Peer connection initialized for offer');
 
-          const offer = new RTCSessionDescription({
-            type: 'offer' as RTCSdpType,
+          const pc = peerConnectionRef.current;
+          const offer: RTCSessionDescriptionInit = {
+            type: 'offer',
             sdp: payload.payload.sdp,
-          });
+          };
 
-          console.log('[WebRTC] Setting remote description from offer');
-          await peerConnection.setRemoteDescription(offer);
-          console.log('[WebRTC] Remote description set, signalingState now:', peerConnection.signalingState);
-          
-          // Show incoming call notification and set answering state
-          setState((prev) => ({ 
-            ...prev, 
-            isAnswering: true,
-            incomingCall: true,
-            callerName: payload.payload.callerName || 'Caller'
-          }));
-          console.log('[WebRTC] Ready to answer call');
+          // Only set remote description if in stable state
+          if (pc.signalingState === 'stable') {
+            console.log('[WebRTC] Setting remote description from offer');
+            await pc.setRemoteDescription(offer);
+            pendingOfferRef.current = offer;
+            console.log('[WebRTC] Remote description set, signalingState now:', pc.signalingState);
+            
+            // Show incoming call notification and set answering state
+            setState((prev) => ({ 
+              ...prev, 
+              isAnswering: true,
+              incomingCall: true,
+              callerName: payload.payload.callerName || 'Caller'
+            }));
+            console.log('[WebRTC] Ready to answer call');
+          } else {
+            console.warn('[WebRTC] Offer received but signaling state is', pc.signalingState, '- ignoring');
+            return;
+          }
         } catch (error) {
           console.error('[WebRTC] Error handling offer:', error);
           toast.error('Failed to receive call');
