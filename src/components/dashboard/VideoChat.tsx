@@ -207,9 +207,6 @@ export const VideoChat = ({
                 <p className="text-center font-semibold mb-2 sm:mb-4 text-blue-500 text-sm sm:text-base truncate">
                   📞 Incoming call from {doctorName}
                 </p>
-                <p className="text-center text-xs sm:text-sm text-blue-600">
-                  Check notifications above to answer or decline
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -227,10 +224,33 @@ export const VideoChat = ({
                 </p>
               </div>
 
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
-                <p className="font-medium text-amber-600 mb-1 sm:mb-2">⏫ Answer Call:</p>
-                <p className="text-xs text-amber-700">
-                  Use the notification banner above to answer or decline.
+              {/* Answer/Decline Buttons */}
+              <div className="flex gap-2 sm:gap-3">
+                <Button
+                  onClick={() => {
+                    if (cameraOffMode) {
+                      setVideoEnabled(false);
+                    }
+                    onAnswerCall();
+                  }}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2 text-sm sm:text-base font-semibold"
+                >
+                  <Phone className="h-4 w-4" />
+                  <span>Answer</span>
+                </Button>
+                <Button
+                  onClick={onEndCall}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white gap-2 text-sm sm:text-base font-semibold"
+                >
+                  <PhoneOff className="h-4 w-4" />
+                  <span>Decline</span>
+                </Button>
+              </div>
+
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
+                <p className="font-medium text-blue-600">💡 Tip:</p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Choose your camera preference above, then click Answer or Decline
                 </p>
               </div>
             </div>
