@@ -11,22 +11,11 @@ interface WebRTCCallState {
   error: string | null;
 }
 
-interface WebRTCCallActions {
-  startCall: () => Promise<void>;
-  answerCall: () => Promise<void>;
-  endCall: () => void;
-  toggleAudio: (enabled: boolean) => void;
-  toggleVideo: (enabled: boolean) => void;
-  setLocalStream: (stream: MediaStream | null) => void;
-  setRemoteStream: (stream: MediaStream | null) => void;
-}
-
 export const useWebRTCCall = (
   appointmentId: string,
   userId: string,
-  userRole: 'doctor' | 'patient',
-  remoteUserId: string
-): [WebRTCCallState, WebRTCCallActions] => {
+  userRole: 'doctor' | 'patient'
+) => {
   const [state, setState] = useState<WebRTCCallState>({
     localStream: null,
     remoteStream: null,
@@ -38,442 +27,193 @@ export const useWebRTCCall = (
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const signalChannelRef = useRef<any>(null);
-  const iceCandidatesRef = useRef<RTCIceCandidate[]>([]);
-  const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const channelReadyRef = useRef<Promise<void>>(Promise.resolve());
+  const isChannelReadyRef = useRef(false);
+  const channelReadyPromiseRef = useRef<Promise<void> | null>(null);
   const resolveChannelReadyRef = useRef<(() => void) | null>(null);
 
-  const configuration = {
-    iceServers: [
-      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-    ],
+  const iceConfig = {
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
   };
 
-  // Initialize peer connection
-  const initializePeerConnection = useCallback(() => {
-    try {
-      const peerConnection = new RTCPeerConnection(configuration);
+  /* ------------------ PEER CONNECTION ------------------ */
+  const createPeerConnection = useCallback(() => {
+    const pc = new RTCPeerConnection(iceConfig);
 
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log('[WebRTC] ICE candidate:', event.candidate);
-          // Send ICE candidate through Supabase realtime
-          if (signalChannelRef.current) {
-            signalChannelRef.current.send({
-              type: 'broadcast',
-              event: 'ice-candidate',
-              payload: {
-                candidate: event.candidate.candidate,
-                sdpMLineIndex: event.candidate.sdpMLineIndex,
-                sdpMid: event.candidate.sdpMid,
-              },
-            });
-          }
-        }
-      };
+    pc.onicecandidate = (e) => {
+      if (e.candidate && signalChannelRef.current) {
+        signalChannelRef.current.send({
+          type: 'broadcast',
+          event: 'ice-candidate',
+          payload: {
+            from: userId,
+            candidate: e.candidate,
+          },
+        });
+      }
+    };
 
-      peerConnection.ontrack = (event) => {
-        console.log('[WebRTC] Remote track received:', event.track.kind);
-        if (event.streams && event.streams.length > 0) {
-          setState((prev) => ({ ...prev, remoteStream: event.streams[0] }));
-        }
-      };
+    pc.ontrack = (e) => {
+      setState((s) => ({ ...s, remoteStream: e.streams[0] }));
+    };
 
-      peerConnection.onconnectionstatechange = () => {
-        console.log('[WebRTC] Connection state changed to:', peerConnection.connectionState);
-        if (peerConnection.connectionState === 'connected') {
-          console.log('[WebRTC] Connection established successfully');
-          setState((prev) => ({ ...prev, isCallActive: true }));
-        } else if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-          console.log('[WebRTC] Connection failed or disconnected');
-          toast.error('Call connection lost');
-          endCall();
-        }
-      };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        setState((s) => ({ ...s, isCallActive: true }));
+      }
+      if (['disconnected', 'failed'].includes(pc.connectionState)) {
+        endCall();
+      }
+    };
 
-      peerConnection.onsignalingstatechange = () => {
-        console.log('[WebRTC] Signaling state:', peerConnection.signalingState);
-      };
+    return pc;
+  }, [userId]);
 
-      peerConnectionRef.current = peerConnection;
-      return peerConnection;
-    } catch (error) {
-      console.error('[WebRTC] Error initializing peer connection:', error);
-      setState((prev) => ({ ...prev, error: 'Failed to initialize peer connection' }));
-      throw error;
-    }
-  }, []);
-
-  // Start call (initiator)
+  /* ------------------ START CALL ------------------ */
   const startCall = useCallback(async () => {
     try {
-      setState((prev) => ({ ...prev, isCalling: true, error: null }));
+      setState((s) => ({ ...s, isCalling: true }));
 
-      // Wait for signaling channel to be ready
-      console.log('[WebRTC] Waiting for signaling channel to be ready...');
-      if (channelReadyRef.current) {
-        await channelReadyRef.current;
-      }
-      
-      // Check if signal channel is ready
-      if (!signalChannelRef.current) {
-        throw new Error('Signaling channel not ready. Please wait a moment and try again.');
+      if (!isChannelReadyRef.current) {
+        await channelReadyPromiseRef.current;
       }
 
-      // Initialize peer connection FIRST (before getting media)
-      const peerConnection = initializePeerConnection();
+      if (!signalChannelRef.current)
+        throw new Error('Signaling channel not ready');
 
-      // Get local media stream with better error handling
-      let stream: MediaStream;
-      try {
-        // Always request video and audio - we can disable tracks later
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: true,
-        });
-      } catch (mediaError: any) {
-        console.error('[WebRTC] getUserMedia error:', mediaError);
-        
-        // Handle specific permission errors
-        if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
-          throw new Error('Camera/Microphone permission denied. Please allow access in your browser settings and try again.');
-        } else if (mediaError.name === 'NotFoundError' || mediaError.name === 'DevicesNotFoundError') {
-          throw new Error('No camera or microphone found. Please check your device connections.');
-        } else if (mediaError.name === 'NotReadableError') {
-          throw new Error('Camera/Microphone is in use by another application. Please close other apps and try again.');
-        } else if (mediaError.name === 'SecurityError') {
-          throw new Error('Secure connection required for camera access. Please use HTTPS.');
-        } else {
-          throw new Error(`Camera/Microphone access failed: ${mediaError.message}`);
-        }
-      }
+      const pc = createPeerConnection();
+      peerConnectionRef.current = pc;
 
-      setState((prev) => ({ ...prev, localStream: stream }));
-
-      // Add tracks to peer connection
-      stream.getTracks().forEach((track) => {
-        console.log('[WebRTC] Adding track:', track.kind, 'enabled:', track.enabled);
-        peerConnection.addTrack(track, stream);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
       });
 
-      // Create and send offer
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      setState((s) => ({ ...s, localStream: stream }));
 
-      console.log('[WebRTC] Sending offer with signalingState:', peerConnection.signalingState);
-      
-      const channel = signalChannelRef.current;
-      if (!channel) {
-        throw new Error('Signaling channel disconnected');
-      }
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-      channel.send({
+      signalChannelRef.current.send({
         type: 'broadcast',
         event: 'offer',
-        payload: {
-          sdp: peerConnection.localDescription?.sdp,
-          type: 'offer',
-        },
+        payload: { from: userId, sdp: offer.sdp },
       });
 
-      // Set timeout for answer - if no answer received in 30 seconds, timeout
-      if (callTimeoutRef.current) {
-        clearTimeout(callTimeoutRef.current);
-      }
-      callTimeoutRef.current = setTimeout(() => {
-        setState((prev) => {
-          if (prev.isCalling && !prev.isCallActive) {
-            const timeoutError = 'Call not answered. Make sure the other person has opened the call dialog.';
-            toast.error(timeoutError);
-            return {
-              ...prev,
-              isCalling: false,
-              error: timeoutError,
-            };
-          }
-          return prev;
-        });
-      }, 30000);
-
-      setState((prev) => ({ ...prev, isCalling: false }));
       toast.success('Calling...');
-    } catch (error) {
-      console.error('[WebRTC] Error starting call:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      setState((prev) => ({
-        ...prev,
-        isCalling: false,
-        error: `Failed to start call: ${errorMsg}`,
-      }));
-      toast.error(errorMsg);
-    }
-  }, [initializePeerConnection]);
-
-  // Answer call (receiver)
-  const answerCall = useCallback(async () => {
-    try {
-      setState((prev) => ({ ...prev, isAnswering: true, error: null }));
-
-      // Get local media stream with better error handling
-      let stream: MediaStream;
-      try {
-        // Always request video and audio - we can disable tracks later
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: true,
-        });
-      } catch (mediaError: any) {
-        console.error('[WebRTC] getUserMedia error:', mediaError);
-        
-        // Handle specific permission errors
-        if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
-          throw new Error('Camera/Microphone permission denied. Please allow access in your browser settings and try again.');
-        } else if (mediaError.name === 'NotFoundError' || mediaError.name === 'DevicesNotFoundError') {
-          throw new Error('No camera or microphone found. Please check your device connections.');
-        } else if (mediaError.name === 'NotReadableError') {
-          throw new Error('Camera/Microphone is in use by another application. Please close other apps and try again.');
-        } else if (mediaError.name === 'SecurityError') {
-          throw new Error('Secure connection required for camera access. Please use HTTPS.');
-        } else {
-          throw new Error(`Camera/Microphone access failed: ${mediaError.message}`);
-        }
-      }
-
-      setState((prev) => ({ ...prev, localStream: stream }));
-
-      // Add tracks to peer connection
-      const peerConnection = peerConnectionRef.current;
-      if (!peerConnection) {
-        throw new Error('Peer connection not initialized. Please wait and try again.');
-      }
-
-      stream.getTracks().forEach((track) => {
-        console.log('[WebRTC] Adding track to answer:', track.kind, 'enabled:', track.enabled);
-        peerConnection.addTrack(track, stream);
-      });
-
-      // Create answer
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-
-      console.log('[WebRTC] Sending answer, signalingState:', peerConnection.signalingState);
-      signalChannelRef.current?.send({
-        type: 'broadcast',
-        event: 'answer',
-        payload: {
-          sdp: peerConnection.localDescription?.sdp,
-          type: 'answer',
-        },
-      });
-
-      // Don't set isCallActive here - let connectionState change event handle it
-      setState((prev) => ({ ...prev, isAnswering: false }));
-      toast.success('Call answered');
-    } catch (error) {
-      console.error('[WebRTC] Error answering call:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      setState((prev) => ({
-        ...prev,
-        isAnswering: false,
-        error: `Failed to answer call: ${errorMsg}`,
-      }));
-      toast.error(errorMsg);
+    } catch (err: any) {
+      toast.error(err.message);
+      setState((s) => ({ ...s, isCalling: false }));
     }
   }, []);
 
-  // End call
-  const endCall = useCallback(() => {
-    console.log('[WebRTC] Ending call');
+  /* ------------------ ANSWER CALL ------------------ */
+  const answerCall = useCallback(async () => {
+    try {
+      const pc = peerConnectionRef.current;
+      if (!pc) throw new Error('Peer connection missing');
 
-    // Stop all tracks
-    if (state.localStream) {
-      state.localStream.getTracks().forEach((track) => track.stop());
-    }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
 
-    // Close peer connection
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      setState((s) => ({ ...s, localStream: stream }));
 
-    // Send call end signal
-    if (signalChannelRef.current) {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
       signalChannelRef.current.send({
         type: 'broadcast',
-        event: 'call-end',
-        payload: {},
+        event: 'answer',
+        payload: { from: userId, sdp: answer.sdp },
       });
-    }
 
-    setState((prev) => ({
-      ...prev,
+      toast.success('Call connected');
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }, [userId]);
+
+  /* ------------------ END CALL ------------------ */
+  const endCall = useCallback(() => {
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+
+    state.localStream?.getTracks().forEach((t) => t.stop());
+
+    setState({
       localStream: null,
       remoteStream: null,
       isCallActive: false,
       isCalling: false,
-    }));
+      isAnswering: false,
+      error: null,
+    });
 
-    toast.success('Call ended');
+    signalChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'call-end',
+      payload: { from: userId },
+    });
   }, [state.localStream]);
 
-  // Toggle audio
-  const toggleAudio = useCallback(
-    (enabled: boolean) => {
-      if (state.localStream) {
-        state.localStream.getAudioTracks().forEach((track) => {
-          track.enabled = enabled;
-        });
-      }
-    },
-    [state.localStream]
-  );
-
-  // Toggle video
-  const toggleVideo = useCallback(
-    (enabled: boolean) => {
-      if (state.localStream) {
-        state.localStream.getVideoTracks().forEach((track) => {
-          track.enabled = enabled;
-        });
-      }
-    },
-    [state.localStream]
-  );
-
-  // Setup signaling channel
+  /* ------------------ SIGNALING SETUP ------------------ */
   useEffect(() => {
     const channel = supabase.channel(`video-call-${appointmentId}`);
-    let subscribed = false;
 
-    // Create a new promise for this channel setup
-    channelReadyRef.current = new Promise<void>((resolve) => {
+    channelReadyPromiseRef.current = new Promise((resolve) => {
       resolveChannelReadyRef.current = resolve;
     });
 
-    const setupChannelListeners = () => {
-      channel.on('broadcast', { event: 'offer' }, async (payload) => {
-        try {
-          console.log('[WebRTC] Received offer, signalingState:', peerConnectionRef.current?.signalingState);
-          
-          // Initialize or use existing peer connection
-          let peerConnection = peerConnectionRef.current;
-          if (!peerConnection || peerConnection.signalingState === 'closed') {
-            console.log('[WebRTC] Creating new peer connection for offer');
-            peerConnection = initializePeerConnection();
-          }
+    channel
+      .on('broadcast', { event: 'offer' }, async ({ payload }) => {
+        if (payload.from === userId) return;
 
-          const offer = new RTCSessionDescription({
-            type: 'offer' as RTCSdpType,
-            sdp: payload.payload.sdp,
-          });
+        const pc = createPeerConnection();
+        peerConnectionRef.current = pc;
 
-          await peerConnection.setRemoteDescription(offer);
-          console.log('[WebRTC] Set remote description, ready to answer');
-          setState((prev) => ({ ...prev, isAnswering: true }));
-        } catch (error) {
-          console.error('[WebRTC] Error handling offer:', error);
-          toast.error('Failed to receive call');
-        }
+        await pc.setRemoteDescription(
+          new RTCSessionDescription({ type: 'offer', sdp: payload.sdp })
+        );
+
+        setState((s) => ({ ...s, isAnswering: true }));
+      })
+
+      .on('broadcast', { event: 'answer' }, async ({ payload }) => {
+        if (payload.from === userId) return;
+        await peerConnectionRef.current?.setRemoteDescription(
+          new RTCSessionDescription({ type: 'answer', sdp: payload.sdp })
+        );
+      })
+
+      .on('broadcast', { event: 'ice-candidate' }, async ({ payload }) => {
+        if (payload.from === userId) return;
+        await peerConnectionRef.current?.addIceCandidate(payload.candidate);
       });
 
-      channel.on('broadcast', { event: 'answer' }, async (payload) => {
-        try {
-          const peerConnection = peerConnectionRef.current;
-          console.log('[WebRTC] Received answer:', {
-            connectionState: peerConnection?.connectionState,
-            signalingState: peerConnection?.signalingState,
-          });
-          
-          if (!peerConnection) {
-            console.error('[WebRTC] No peer connection available for answer');
-            return;
-          }
-
-          // Only accept answer if we're in 'have-local-offer' state (we initiated the call)
-          if (peerConnection.signalingState !== 'have-local-offer') {
-            console.warn('[WebRTC] Ignoring answer - unexpected state:', peerConnection.signalingState);
-            return;
-          }
-
-          const answer = new RTCSessionDescription({
-            type: 'answer' as RTCSdpType,
-            sdp: payload.payload.sdp,
-          });
-          
-          await peerConnection.setRemoteDescription(answer);
-          console.log('[WebRTC] Set remote answer successfully, signalingState is now:', peerConnection.signalingState);
-        } catch (error) {
-          console.error('[WebRTC] Error handling answer:', error);
-          toast.error('Failed to establish connection');
-        }
-      });
-
-      channel.on('broadcast', { event: 'ice-candidate' }, async (payload) => {
-        try {
-          const peerConnection = peerConnectionRef.current;
-          if (peerConnection && payload.payload.candidate) {
-            const candidate = new RTCIceCandidate({
-              candidate: payload.payload.candidate,
-              sdpMLineIndex: payload.payload.sdpMLineIndex,
-              sdpMid: payload.payload.sdpMid,
-            });
-            await peerConnection.addIceCandidate(candidate);
-          }
-        } catch (error) {
-          console.error('[WebRTC] Error adding ICE candidate:', error);
-        }
-      });
-
-      channel.on('broadcast', { event: 'call-end' }, () => {
-        console.log('[WebRTC] Remote user ended call');
-        endCall();
-      });
-    };
-
-    // Set up listeners first
-    setupChannelListeners();
-
-    // Subscribe and wait for confirmation before setting ref
-    const subscription = channel.subscribe((status) => {
-      console.log('[WebRTC] Channel subscription status:', status, 'on channel: video-call-' + appointmentId);
+    channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        subscribed = true;
-        console.log('[WebRTC] Signaling channel subscribed successfully');
         signalChannelRef.current = channel;
-        // Resolve the promise to indicate channel is ready
-        if (resolveChannelReadyRef.current) {
-          resolveChannelReadyRef.current();
-          resolveChannelReadyRef.current = null;
-        }
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('[WebRTC] Signaling channel error');
-        subscribed = false;
-        setState((prev) => ({ ...prev, error: 'Failed to establish signaling channel' }));
-        toast.error('Failed to establish signaling channel');
-      } else if (status === 'CLOSED') {
-        console.warn('[WebRTC] Signaling channel closed');
-        subscribed = false;
-        signalChannelRef.current = null;
+        isChannelReadyRef.current = true;
+        resolveChannelReadyRef.current?.();
       }
     });
 
     return () => {
-      console.log('[WebRTC] Cleaning up signaling channel');
       supabase.removeChannel(channel);
-      signalChannelRef.current = null;
     };
-  }, [appointmentId, initializePeerConnection, endCall]);
+  }, [appointmentId]);
 
-  return [
+  return {
     state,
-    {
-      startCall,
-      answerCall,
-      endCall,
-      toggleAudio,
-      toggleVideo,
-      setLocalStream: (stream) => setState((prev) => ({ ...prev, localStream: stream })),
-      setRemoteStream: (stream) => setState((prev) => ({ ...prev, remoteStream: stream })),
-    },
-  ];
+    startCall,
+    answerCall,
+    endCall,
+    toggleAudio: (v: boolean) =>
+      state.localStream?.getAudioTracks().forEach((t) => (t.enabled = v)),
+    toggleVideo: (v: boolean) =>
+      state.localStream?.getVideoTracks().forEach((t) => (t.enabled = v)),
+  };
 };
