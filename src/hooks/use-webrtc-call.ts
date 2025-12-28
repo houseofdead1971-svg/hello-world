@@ -48,6 +48,7 @@ export const useWebRTCCall = (
   const channelReadyRef = useRef<Promise<void>>(Promise.resolve());
   const resolveChannelReadyRef = useRef<(() => void) | null>(null);
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
+  const remoteOfferReadyRef = useRef(false);
 
   const configuration = {
     iceServers: [
@@ -152,6 +153,9 @@ export const useWebRTCCall = (
   const startCall = useCallback(async () => {
     try {
       setState((prev) => ({ ...prev, isCalling: true, error: null }));
+
+      // Reset offer ready flag for new call
+      remoteOfferReadyRef.current = false;
 
       // Wait for signaling channel to be ready with retry logic
       console.log('[WebRTC] Waiting for signaling channel to be ready...');
@@ -289,15 +293,28 @@ export const useWebRTCCall = (
 
       console.log('[WebRTC] Answer call - signaling state:', pc.signalingState, 'connection state:', pc.connectionState);
 
+      // Safely wait for remote offer to be fully processed
+      const waitForOffer = async () => {
+        const start = Date.now();
+        while (!remoteOfferReadyRef.current) {
+          if (Date.now() - start > 5000) {
+            throw new Error('Timed out waiting for remote offer. The other party may have disconnected.');
+          }
+          console.log('[WebRTC] Waiting for remote offer to be ready...');
+          await new Promise(res => setTimeout(res, 100));
+        }
+      };
+
+      await waitForOffer();
+
+      // Verify state is correct before creating answer
+      if (pc.signalingState === 'closed') {
+        throw new Error('Peer connection was closed unexpectedly.');
+      }
+
       if (pc.signalingState !== 'have-remote-offer') {
         console.warn('[WebRTC] Invalid state for answer:', pc.signalingState);
-        setState((prev) => ({
-          ...prev,
-          isAnswering: false,
-          error: 'Call setup incomplete. Please try again.',
-          incomingCall: false,
-        }));
-        return;
+        throw new Error('Call setup incomplete. Please try again.');
       }
 
       // Get local media stream
@@ -369,6 +386,9 @@ export const useWebRTCCall = (
   // End call
   const endCall = useCallback(() => {
     console.log('[WebRTC] Ending call');
+
+    // Reset offer ready flag for next call
+    remoteOfferReadyRef.current = false;
 
     // Stop all tracks and disable camera explicitly
     if (state.localStream) {
@@ -464,10 +484,13 @@ export const useWebRTCCall = (
             pendingOfferRef.current = offer;
             console.log('[WebRTC] Remote description set, signalingState now:', pc.signalingState);
             
-            // Show incoming call notification and set answering state
+            // Mark offer as ready for answer
+            remoteOfferReadyRef.current = true;
+            console.log('[WebRTC] Remote offer is ready for answer');
+            
+            // Show incoming call notification
             setState((prev) => ({ 
               ...prev, 
-              isAnswering: true,
               incomingCall: true,
               callerName: payload.payload.callerName || 'Caller'
             }));
