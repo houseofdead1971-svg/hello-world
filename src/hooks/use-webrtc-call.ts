@@ -280,6 +280,27 @@ export const useWebRTCCall = (
     try {
       setState((prev) => ({ ...prev, isAnswering: true, error: null }));
 
+      // Verify peer connection exists and is in correct state
+      let peerConnection = peerConnectionRef.current;
+      if (!peerConnection) {
+        throw new Error('Peer connection not initialized. Please wait a moment and try again.');
+      }
+
+      console.log('[WebRTC] Answer call - peer connection state:', {
+        connectionState: peerConnection.connectionState,
+        signalingState: peerConnection.signalingState,
+        iceConnectionState: peerConnection.iceConnectionState,
+      });
+
+      // If not in have-remote-offer state, something is wrong
+      if (peerConnection.signalingState !== 'have-remote-offer') {
+        console.warn('[WebRTC] Peer connection not in have-remote-offer state:', peerConnection.signalingState);
+        // Try to recover by closing and starting fresh
+        peerConnection.close();
+        peerConnectionRef.current = null;
+        throw new Error('Call setup incomplete. Please try again.');
+      }
+
       // Get local media stream with better error handling
       let stream: MediaStream;
       try {
@@ -308,22 +329,24 @@ export const useWebRTCCall = (
       setState((prev) => ({ ...prev, localStream: stream }));
 
       // Add tracks to peer connection
-      const peerConnection = peerConnectionRef.current;
-      if (!peerConnection) {
-        throw new Error('Peer connection not initialized. Please wait and try again.');
-      }
-
       stream.getTracks().forEach((track) => {
         console.log('[WebRTC] Adding track to answer:', track.kind, 'enabled:', track.enabled);
         peerConnection.addTrack(track, stream);
       });
 
-      // Create answer
+      // Create answer - should work now since we're in have-remote-offer state
+      console.log('[WebRTC] Creating answer...');
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
 
       console.log('[WebRTC] Sending answer, signalingState:', peerConnection.signalingState);
-      signalChannelRef.current?.send({
+      
+      // Ensure channel is ready before sending
+      if (!signalChannelRef.current) {
+        throw new Error('Signaling channel disconnected. Please try again.');
+      }
+
+      signalChannelRef.current.send({
         type: 'broadcast',
         event: 'answer',
         payload: {
@@ -342,6 +365,7 @@ export const useWebRTCCall = (
         ...prev,
         isAnswering: false,
         error: `Failed to answer call: ${errorMsg}`,
+        incomingCall: false,
       }));
       toast.error(errorMsg);
     }
@@ -424,22 +448,26 @@ export const useWebRTCCall = (
     const setupChannelListeners = () => {
       channel.on('broadcast', { event: 'offer' }, async (payload) => {
         try {
-          console.log('[WebRTC] Received offer, signalingState:', peerConnectionRef.current?.signalingState);
+          console.log('[WebRTC] Received offer, current signalingState:', peerConnectionRef.current?.signalingState);
           
-          // Initialize or use existing peer connection
-          let peerConnection = peerConnectionRef.current;
-          if (!peerConnection || peerConnection.signalingState === 'closed') {
-            console.log('[WebRTC] Creating new peer connection for offer');
-            peerConnection = initializePeerConnection();
+          // Create fresh peer connection for incoming call
+          if (peerConnectionRef.current) {
+            console.log('[WebRTC] Closing existing peer connection');
+            peerConnectionRef.current.close();
           }
+          
+          const peerConnection = initializePeerConnection();
+          console.log('[WebRTC] Peer connection initialized for offer');
 
           const offer = new RTCSessionDescription({
             type: 'offer' as RTCSdpType,
             sdp: payload.payload.sdp,
           });
 
+          console.log('[WebRTC] Setting remote description from offer');
           await peerConnection.setRemoteDescription(offer);
-          console.log('[WebRTC] Set remote description, ready to answer');
+          console.log('[WebRTC] Remote description set, signalingState now:', peerConnection.signalingState);
+          
           // Show incoming call notification and set answering state
           setState((prev) => ({ 
             ...prev, 
@@ -447,6 +475,7 @@ export const useWebRTCCall = (
             incomingCall: true,
             callerName: payload.payload.callerName || 'Caller'
           }));
+          console.log('[WebRTC] Ready to answer call');
         } catch (error) {
           console.error('[WebRTC] Error handling offer:', error);
           toast.error('Failed to receive call');
