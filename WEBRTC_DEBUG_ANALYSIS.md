@@ -80,3 +80,4 @@ React might not detect changes to MediaStream objects, so we need to create new 
 4. Ensure stream is properly updated when tracks are added
 5. Add fallback to check receivers if `ontrack` doesn't fire
 
+
