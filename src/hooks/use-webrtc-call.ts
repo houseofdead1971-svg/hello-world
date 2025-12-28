@@ -47,6 +47,7 @@ export const useWebRTCCall = (
   const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const channelReadyRef = useRef<Promise<void>>(Promise.resolve());
   const resolveChannelReadyRef = useRef<(() => void) | null>(null);
+  const isEndingCallRef = useRef<boolean>(false);
 
   const configuration = {
     iceServers: [
@@ -348,8 +349,15 @@ export const useWebRTCCall = (
   }, []);
 
   // End call
-  const endCall = useCallback(() => {
-    console.log('[WebRTC] Ending call');
+  const endCall = useCallback((fromRemote: boolean = false) => {
+    // Guard against multiple calls and infinite loops
+    if (isEndingCallRef.current) {
+      console.log('[WebRTC] Call is already ending, ignoring duplicate call');
+      return;
+    }
+    
+    isEndingCallRef.current = true;
+    console.log('[WebRTC] Ending call', fromRemote ? '(triggered by remote)' : '(user initiated)');
 
     // Stop all tracks
     if (state.localStream) {
@@ -362,8 +370,10 @@ export const useWebRTCCall = (
       peerConnectionRef.current = null;
     }
 
-    // Send call end signal
-    if (signalChannelRef.current) {
+    // Only send call end signal if this is user-initiated (not from remote)
+    // This prevents the infinite loop of call-end messages bouncing back and forth
+    if (!fromRemote && signalChannelRef.current) {
+      console.log('[WebRTC] Sending call-end signal to remote');
       signalChannelRef.current.send({
         type: 'broadcast',
         event: 'call-end',
@@ -377,9 +387,16 @@ export const useWebRTCCall = (
       remoteStream: null,
       isCallActive: false,
       isCalling: false,
+      isAnswering: false,
+      incomingCall: false,
     }));
 
     toast.success('Call ended');
+    
+    // Reset the flag after a short delay to allow for cleanup
+    setTimeout(() => {
+      isEndingCallRef.current = false;
+    }, 500);
   }, [state.localStream]);
 
   // Toggle audio
@@ -498,7 +515,7 @@ export const useWebRTCCall = (
 
       channel.on('broadcast', { event: 'call-end' }, () => {
         console.log('[WebRTC] Remote user ended call');
-        endCall();
+        endCall(true); // Pass true to indicate this is from remote
       });
     };
 
