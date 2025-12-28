@@ -46,27 +46,17 @@ export const VideoChat = ({
   const [copied, setCopied] = useState(false);
   const [expandRemote, setExpandRemote] = useState(false);
 
-  // Connect local stream to video element and clear when stream ends
+  // Connect local stream to video element
   useEffect(() => {
-    if (localVideoRef.current) {
-      if (localStream) {
-        localVideoRef.current.srcObject = localStream;
-      } else {
-        // Clear video element when stream is null
-        localVideoRef.current.srcObject = null;
-      }
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
     }
   }, [localStream]);
 
-  // Connect remote stream to video element and clear when stream ends
+  // Connect remote stream to video element
   useEffect(() => {
-    if (remoteVideoRef.current) {
-      if (remoteStream) {
-        remoteVideoRef.current.srcObject = remoteStream;
-      } else {
-        // Clear video element when stream is null
-        remoteVideoRef.current.srcObject = null;
-      }
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
     }
   }, [remoteStream]);
 
@@ -90,9 +80,9 @@ export const VideoChat = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col gap-3 sm:gap-4 p-3 sm:p-4 min-h-0">
+    <div className="w-full h-full flex flex-col gap-4 p-4 min-h-0">
       {/* Video Container */}
-      <div className="flex-1 relative bg-black rounded-lg overflow-hidden min-h-[150px] sm:min-h-[300px]">
+      <div className="flex-1 relative bg-black rounded-lg overflow-hidden min-h-[200px] sm:min-h-[300px]">
         {/* Remote Video */}
         {remoteStream && isCallActive ? (
           <video
@@ -148,28 +138,28 @@ export const VideoChat = ({
       </div>
 
       {/* Controls */}
-      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col max-h-[50vh] sm:max-h-[40vh] overflow-hidden">
-        <CardContent className="pt-3 sm:pt-4 overflow-y-auto flex-1 pb-2 sm:pb-3">
+      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col max-h-[40vh] sm:max-h-[35vh] overflow-hidden">
+        <CardContent className="pt-4 sm:pt-6 overflow-y-auto flex-1">
           {!isCallActive && !isCalling && !isAnswering ? (
             // Pre-Call State
-            <div className="space-y-2 sm:space-y-3">
+            <div className="space-y-3 sm:space-y-4">
               {error && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-xs sm:p-3 sm:text-sm">
-                  <p className="font-medium text-red-600 mb-0.5 sm:mb-1">❌ Error:</p>
-                  <p className="text-red-700 mb-0.5 sm:mb-1">{error}</p>
-                  <p className="text-red-600 font-medium">
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 sm:p-3">
+                  <p className="text-xs sm:text-sm font-medium text-red-600 mb-1 sm:mb-2">❌ Error:</p>
+                  <p className="text-xs sm:text-sm text-red-700">{error}</p>
+                  <p className="text-xs text-red-600 mt-1 sm:mt-2 font-medium">
                     💡 Solution: Check if your camera/microphone are enabled and not in use by another app. Refresh and try again.
                   </p>
                 </div>
               )}
 
-              <div className="space-y-1 sm:space-y-2">
+              <div className="space-y-2">
                 <label className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-2 sm:p-3 rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition">
                   <input
                     type="checkbox"
                     checked={cameraOffMode}
                     onChange={(e) => setCameraOffMode(e.target.checked)}
-                    className="w-4 h-4 flex-shrink-0"
+                    className="w-4 h-4"
                   />
                   <span className="text-xs sm:text-sm font-medium truncate">{cameraOffMode ? '📹 Camera OFF' : '📹 Camera ON'}</span>
                 </label>
@@ -185,23 +175,23 @@ export const VideoChat = ({
                   }
                   onStartCall();
                 }}
-                className="w-full bg-green-600 hover:bg-green-700 text-white gap-2 text-xs sm:text-base py-2"
+                className="w-full bg-green-600 hover:bg-green-700 text-white gap-2 text-sm sm:text-base"
                 disabled={isCalling || !!error}
               >
-                <Phone className="h-3 w-3 sm:h-4 sm:w-4" />
+                <Phone className="h-4 w-4" />
                 {isCalling ? 'Connecting...' : userRole === 'doctor' ? 'Start Call' : 'Call Doctor'}
               </Button>
 
               {userRole === 'patient' && (
-                <div className="text-xs text-muted-foreground text-center leading-snug">
-                  <p>Click to initiate the call</p>
-                  <p>Microphone must be enabled</p>
+                <div className="text-xs sm:text-sm text-muted-foreground text-center">
+                  <p>Click above to initiate the video call</p>
+                  <p className="text-xs mt-0.5">Microphone must be enabled</p>
                 </div>
               )}
 
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 text-xs sm:p-3 sm:text-sm">
-                <p className="font-medium text-blue-600 mb-1">📋 Permission:</p>
-                <ul className="text-xs space-y-0.5 text-blue-700 leading-snug">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
+                <p className="font-medium text-blue-600 mb-1 sm:mb-2">📋 Permission:</p>
+                <ul className="text-xs space-y-0.5 text-blue-700">
                   <li>✓ Allow camera/microphone when asked</li>
                   <li>✓ Can join with camera OFF</li>
                   <li>✓ Check browser settings if blocked</li>
