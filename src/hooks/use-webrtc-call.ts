@@ -48,10 +48,22 @@ export const useWebRTCCall = (
   const channelReadyRef = useRef<Promise<void>>(Promise.resolve());
   const resolveChannelReadyRef = useRef<(() => void) | null>(null);
   const isEndingCallRef = useRef<boolean>(false);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidate[]>([]);
 
   const configuration = {
     iceServers: [
       { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+      // TURN servers for NAT traversal (free tier - Metered.ca)
+      {
+        urls: ['turn:global.relay.metered.ca:80'],
+        username: 'metered',
+        credential: 'metered',
+      },
+      {
+        urls: ['turn:global.relay.metered.ca:80?transport=tcp'],
+        username: 'metered',
+        credential: 'metered',
+      },
     ],
   };
 
@@ -452,6 +464,18 @@ export const useWebRTCCall = (
 
           await peerConnection.setRemoteDescription(offer);
           console.log('[WebRTC] Set remote description, ready to answer');
+          
+          // Process buffered ICE candidates
+          console.log('[WebRTC] Processing', pendingIceCandidatesRef.current.length, 'buffered ICE candidates');
+          for (const candidate of pendingIceCandidatesRef.current) {
+            try {
+              await peerConnection.addIceCandidate(candidate);
+            } catch (err) {
+              console.error('[WebRTC] Error adding buffered candidate:', err);
+            }
+          }
+          pendingIceCandidatesRef.current = [];
+          
           // Show incoming call notification and set answering state
           setState((prev) => ({ 
             ...prev, 
@@ -491,6 +515,17 @@ export const useWebRTCCall = (
           
           await peerConnection.setRemoteDescription(answer);
           console.log('[WebRTC] Set remote answer successfully, signalingState is now:', peerConnection.signalingState);
+          
+          // Process buffered ICE candidates
+          console.log('[WebRTC] Processing', pendingIceCandidatesRef.current.length, 'buffered ICE candidates');
+          for (const candidate of pendingIceCandidatesRef.current) {
+            try {
+              await peerConnection.addIceCandidate(candidate);
+            } catch (err) {
+              console.error('[WebRTC] Error adding buffered candidate:', err);
+            }
+          }
+          pendingIceCandidatesRef.current = [];
         } catch (error) {
           console.error('[WebRTC] Error handling answer:', error);
           toast.error('Failed to establish connection');
@@ -506,7 +541,14 @@ export const useWebRTCCall = (
               sdpMLineIndex: payload.payload.sdpMLineIndex,
               sdpMid: payload.payload.sdpMid,
             });
-            await peerConnection.addIceCandidate(candidate);
+            
+            // If remote description is ready, add immediately. Otherwise, buffer it.
+            if (peerConnection.remoteDescription) {
+              await peerConnection.addIceCandidate(candidate);
+            } else {
+              console.log('[WebRTC] Buffering ICE candidate (remote description not ready)');
+              pendingIceCandidatesRef.current.push(candidate);
+            }
           }
         } catch (error) {
           console.error('[WebRTC] Error adding ICE candidate:', error);

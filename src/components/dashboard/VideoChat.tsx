@@ -83,8 +83,8 @@ export const VideoChat = ({
     <div className="w-full h-full flex flex-col gap-4 p-4 min-h-0">
       {/* Video Container */}
       <div className="flex-1 relative bg-black rounded-lg overflow-hidden min-h-[200px] sm:min-h-[300px]">
-        {/* Remote Video */}
-        {remoteStream && isCallActive ? (
+        {/* Remote Video - show if stream exists (don't wait for isCallActive) */}
+        {remoteStream ? (
           <video
             ref={remoteVideoRef}
             autoPlay
