@@ -11,6 +11,7 @@ import Notifications from "@/components/dashboard/Notifications";
 import { HealthTimeline } from "@/components/dashboard/HealthTimeline";
 import { MedicationTracker } from "@/components/dashboard/MedicationTracker";
 import { RecordsUpload } from "@/components/dashboard/RecordsUpload";
+import { BloodReportAnalysis } from "@/components/dashboard/BloodReportAnalysis";
 import { AvailableDoctors } from "@/components/dashboard/AvailableDoctors";
 import { PatientAppointments } from "@/components/dashboard/PatientAppointments";
 import { PatientAppointmentHistory } from "@/components/dashboard/PatientAppointmentHistory";
@@ -422,6 +423,11 @@ const Dashboard = ({ showChat = false }: DashboardProps) => {
               {/* Medical Records */}
               <div className="h-full lg:col-span-2">
                 <RecordsUpload userId={user.id} />
+              </div>
+
+              {/* Blood Report Analysis */}
+              <div className="h-full lg:col-span-2">
+                <BloodReportAnalysis userId={user.id} />
               </div>
             </div>
           </TabsContent>
