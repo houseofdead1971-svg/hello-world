@@ -114,30 +114,20 @@ const Settings = () => {
     }
   };
 
-  const loadNotificationPreferences = async () => {
+  const loadNotificationPreferences = () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Load from profiles table
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("send_email, send_whatsapp")
-        .eq("id", user.id)
-        .single();
-
-      if (error) {
-        console.warn("Notification preferences not found, using defaults", error);
-        return;
+      // Load from localStorage
+      const savedEmailPref = localStorage.getItem("emailNotifications");
+      const savedAppointmentPref = localStorage.getItem("appointmentAlerts");
+      
+      if (savedEmailPref !== null) {
+        setEmailNotifications(savedEmailPref === "true");
       }
-
-      if (data) {
-        setEmailNotifications(data.send_email ?? true);
-        setAppointmentAlerts(data.send_whatsapp ?? true);
+      if (savedAppointmentPref !== null) {
+        setAppointmentAlerts(savedAppointmentPref === "true");
       }
     } catch (error) {
       console.error("Error loading notification preferences:", error);
-      toast.error("Failed to load notification preferences");
     }
   };
 
@@ -246,36 +236,18 @@ const Settings = () => {
     }
   };
 
-  const updateNotificationPreference = async (
-    field: string,
-    value: boolean
-  ) => {
-    setLoadingNotifications(true);
+  const updateNotificationPreference = (field: string, value: boolean) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Update profiles table based on field name
-      let updateData: any = {};
+      // Save to localStorage
       if (field === "email_notifications") {
-        updateData.send_email = value;
+        localStorage.setItem("emailNotifications", String(value));
       } else if (field === "appointment_alerts") {
-        updateData.send_whatsapp = value;
+        localStorage.setItem("appointmentAlerts", String(value));
       }
-
-      const { error } = await supabase
-        .from("profiles")
-        .update(updateData)
-        .eq("id", user.id);
-
-      if (error) throw error;
-
       toast.success("Notification preference updated");
     } catch (error) {
       console.error("Error updating notification preference:", error);
       toast.error("Failed to update notification preference");
-    } finally {
-      setLoadingNotifications(false);
     }
   };
 
