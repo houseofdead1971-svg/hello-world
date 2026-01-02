@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { EditPatientDetails } from "./EditPatientDetails";
 import { PatientQRCode } from "./PatientQRCode";
-import { BloodReportAnalysis } from "./BloodReportAnalysis";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -453,11 +452,6 @@ export function PatientDetailsDialog({
                   )}
                 </div>
               </Card>
-
-              {/* Blood Report Analysis Section */}
-              <div className="md:col-span-2">
-                <BloodReportAnalysis userId={patient.id} />
-              </div>
             </div>
           </div>
         </ScrollArea>
