@@ -142,49 +142,49 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
   };
 
   return (
-    <Card className="w-full p-8 border border-border/50 rounded-2xl bg-gradient-to-br from-card via-card to-card/50 hover:border-primary/50 transition-all duration-500">
-      <div className="space-y-6">
+    <Card className="w-full p-4 md:p-8 border border-border/50 rounded-2xl bg-gradient-to-br from-card via-card to-card/50 hover:border-primary/50 transition-all duration-500">
+      <div className="space-y-4 md:space-y-6">
         {/* Header */}
         <div>
-          <h3 className="text-2xl font-bold text-foreground mb-2 flex items-center gap-2">
-            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-              <Upload className="h-5 w-5 text-white" />
+          <h3 className="text-lg md:text-2xl font-bold text-foreground mb-1 md:mb-2 flex items-center gap-2">
+            <div className="h-8 w-8 md:h-10 md:w-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+              <Upload className="h-4 w-4 md:h-5 md:w-5 text-white" />
             </div>
-            Blood Report Analysis
+            <span className="truncate">Blood Report Analysis</span>
           </h3>
-          <p className="text-muted-foreground">Upload blood report image for AI analysis (Max 100KB)</p>
+          <p className="text-sm md:text-base text-muted-foreground">Upload blood report image for AI analysis (Max 100KB)</p>
         </div>
 
         {/* Error Alert */}
         {error && (
-          <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200/50">
-            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <div className="flex items-start gap-2 md:gap-3 p-3 md:p-4 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200/50">
+            <AlertCircle className="h-4 w-4 md:h-5 md:w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+            <p className="text-xs md:text-sm text-red-600 dark:text-red-400">{error}</p>
           </div>
         )}
 
         {/* File Upload Section */}
         {!showResponse ? (
-          <div className="space-y-4">
+          <div className="space-y-3 md:space-y-4">
             {/* Preview */}
             {preview && (
               <div className="relative rounded-lg overflow-hidden border border-border/50 bg-muted/30">
                 <img
                   src={preview}
                   alt="Blood report preview"
-                  className="w-full h-auto max-h-64 object-contain"
+                  className="w-full h-auto max-h-48 md:max-h-64 object-contain"
                 />
-                <div className="absolute top-2 right-2 flex items-center gap-2">
-                  <div className="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+                <div className="absolute top-2 right-2 flex items-center gap-1 md:gap-2">
+                  <div className="bg-green-500 text-white px-2 md:px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1">
                     <Check className="h-3 w-3" />
-                    Selected
+                    <span className="hidden sm:inline">Selected</span>
                   </div>
                   <button
                     onClick={handleDeleteImage}
-                    className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full transition-colors"
+                    className="bg-red-500 hover:bg-red-600 text-white p-1.5 md:p-2 rounded-full transition-colors"
                     title="Delete image"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3 w-3 md:h-4 md:w-4" />
                   </button>
                 </div>
               </div>
@@ -192,10 +192,10 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
 
             {/* File Input */}
             <div className="relative">
-              <Label htmlFor="blood-report-upload" className="block text-sm font-medium mb-3">
+              <Label htmlFor="blood-report-upload" className="block text-xs md:text-sm font-medium mb-2 md:mb-3">
                 Upload Blood Report Image
               </Label>
-              <div className="relative border-2 border-dashed border-border/50 rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer group">
+              <div className="relative border-2 border-dashed border-border/50 rounded-lg p-4 md:p-8 text-center hover:border-primary/50 transition-colors cursor-pointer group">
                 <input
                   id="blood-report-upload"
                   type="file"
@@ -206,12 +206,12 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
                 />
                 <div className="space-y-2">
                   <div className="flex justify-center">
-                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                      <Upload className="h-6 w-6 text-primary" />
+                    <div className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <Upload className="h-5 w-5 md:h-6 md:w-6 text-primary" />
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-foreground">
+                    <p className="text-xs md:text-sm font-medium text-foreground">
                       Click to upload or drag and drop
                     </p>
                     <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 100KB</p>
@@ -222,19 +222,19 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
 
             {/* File Info */}
             {selectedFile && (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border/50">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">{selectedFile.name}</p>
+              <div className="flex items-center justify-between p-2 md:p-3 rounded-lg bg-muted/50 border border-border/50 gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs md:text-sm font-medium text-foreground truncate">{selectedFile.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {(selectedFile.size / 1024).toFixed(2)}KB
                   </p>
                 </div>
                 <button
                   onClick={handleDeleteImage}
-                  className="p-2 rounded-lg hover:bg-red-500/10 text-red-500 hover:text-red-600 transition-colors"
+                  className="p-1.5 md:p-2 rounded-lg hover:bg-red-500/10 text-red-500 hover:text-red-600 transition-colors flex-shrink-0"
                   title="Delete image"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3 w-3 md:h-4 md:w-4" />
                 </button>
               </div>
             )}
@@ -243,16 +243,16 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
             <Button
               onClick={handleSubmit}
               disabled={!selectedFile || uploading}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm md:text-base"
             >
               {uploading ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="h-3 w-3 md:h-4 md:w-4 mr-2 animate-spin" />
                   Analyzing...
                 </>
               ) : (
                 <>
-                  <Upload className="h-4 w-4 mr-2" />
+                  <Upload className="h-3 w-3 md:h-4 md:w-4 mr-2" />
                   Submit for Analysis
                 </>
               )}
@@ -262,11 +262,11 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
 
         {/* Response Section */}
         {showResponse && analysisResponse && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h4 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
-                  <Check className="h-4 w-4 text-white" />
+          <div className="space-y-4 md:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 md:gap-4">
+              <h4 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
+                <div className="h-6 w-6 md:h-8 md:w-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                  <Check className="h-3 w-3 md:h-4 md:w-4 text-white" />
                 </div>
                 Analysis Complete
               </h4>
@@ -277,6 +277,7 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
                   setShowResponse(false);
                   setAnalysisResponse(null);
                 }}
+                className="text-xs md:text-sm"
               >
                 Upload Another
               </Button>
@@ -284,10 +285,10 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
 
             {/* Patient Summary */}
             {analysisResponse.patient_summary && (
-              <div className="space-y-3 p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-50/50 dark:from-blue-950/20 dark:to-blue-950/10 border border-blue-200/50">
-                <div className="flex items-center gap-2">
-                  <h5 className="text-base font-semibold text-foreground">Overall Status</h5>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+              <div className="space-y-2 md:space-y-3 p-3 md:p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-50/50 dark:from-blue-950/20 dark:to-blue-950/10 border border-blue-200/50">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                  <h5 className="text-sm md:text-base font-semibold text-foreground">Overall Status</h5>
+                  <span className={`px-2 md:px-3 py-0.5 md:py-1 rounded-full text-xs font-medium self-start ${
                     analysisResponse.patient_summary.overall_status?.includes("Concern") 
                       ? "bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400"
                       : analysisResponse.patient_summary.overall_status?.includes("Normal")
@@ -298,11 +299,11 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
                   </span>
                 </div>
                 {analysisResponse.patient_summary.key_findings && (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-sm font-medium text-muted-foreground">Key Findings:</p>
-                    <ul className="space-y-2">
+                  <div className="mt-2 md:mt-3 space-y-1 md:space-y-2">
+                    <p className="text-xs md:text-sm font-medium text-muted-foreground">Key Findings:</p>
+                    <ul className="space-y-1 md:space-y-2">
                       {analysisResponse.patient_summary.key_findings.map((finding: string, idx: number) => (
-                        <li key={idx} className="text-sm text-foreground flex gap-2">
+                        <li key={idx} className="text-xs md:text-sm text-foreground flex gap-2">
                           <span className="text-primary font-bold flex-shrink-0">•</span>
                           <span>{finding}</span>
                         </li>
@@ -315,13 +316,13 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
 
             {/* Test Results */}
             {analysisResponse.results && Array.isArray(analysisResponse.results) && (
-              <div className="space-y-3">
-                <h5 className="text-base font-semibold text-foreground">Blood Test Results</h5>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2 md:space-y-3">
+                <h5 className="text-sm md:text-base font-semibold text-foreground">Blood Test Results</h5>
+                <div className="grid grid-cols-1 gap-2 md:gap-3">
                   {analysisResponse.results.map((result: any, idx: number) => (
                     <div
                       key={idx}
-                      className={`p-4 rounded-lg border ${
+                      className={`p-3 md:p-4 rounded-lg border ${
                         result.status === "High"
                           ? "bg-red-50 dark:bg-red-950/10 border-red-200/50"
                           : result.status === "Low"
@@ -329,9 +330,9 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
                           : "bg-green-50 dark:bg-green-950/10 border-green-200/50"
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <p className="font-semibold text-foreground text-sm">{result.test_name}</p>
-                        <span className={`text-xs font-medium px-2 py-1 rounded ${
+                      <div className="flex items-start justify-between mb-1 md:mb-2 gap-2">
+                        <p className="font-semibold text-foreground text-xs md:text-sm">{result.test_name}</p>
+                        <span className={`text-xs font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded flex-shrink-0 ${
                           result.status === "High"
                             ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
                             : result.status === "Low"
@@ -341,11 +342,11 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
                           {result.status}
                         </span>
                       </div>
-                      <p className="text-sm text-foreground mb-2">
+                      <p className="text-xs md:text-sm text-foreground mb-1 md:mb-2">
                         <span className="font-semibold">{result.value}</span>
                         <span className="text-muted-foreground ml-1">{result.unit}</span>
                       </p>
-                      <p className="text-xs text-muted-foreground mb-2">
+                      <p className="text-xs text-muted-foreground mb-1 md:mb-2">
                         Normal: {result.normal_range}
                       </p>
                       {result.clinical_note && (
@@ -359,15 +360,15 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
 
             {/* Recommendations */}
             {analysisResponse.recommendations && (
-              <div className="space-y-3">
-                <h5 className="text-base font-semibold text-foreground">Blood Health Recommendations</h5>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2 md:space-y-3">
+                <h5 className="text-sm md:text-base font-semibold text-foreground">Blood Health Recommendations</h5>
+                <div className="grid grid-cols-1 gap-3 md:gap-4">
                   {analysisResponse.recommendations.diet && (
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-purple-50 to-purple-50/50 dark:from-purple-950/20 dark:to-purple-950/10 border border-purple-200/50">
-                      <p className="font-semibold text-foreground mb-2 flex items-center gap-2">
-                        <span className="text-lg">🍎</span> Blood-Boosting Diet
+                    <div className="p-3 md:p-4 rounded-lg bg-gradient-to-br from-purple-50 to-purple-50/50 dark:from-purple-950/20 dark:to-purple-950/10 border border-purple-200/50">
+                      <p className="font-semibold text-foreground mb-2 flex items-center gap-2 text-xs md:text-sm">
+                        <span className="text-base md:text-lg">🍎</span> Blood-Boosting Diet
                       </p>
-                      <ul className="space-y-1 text-sm text-foreground">
+                      <ul className="space-y-1 text-xs md:text-sm text-foreground">
                         {analysisResponse.recommendations.diet.map((item: string, idx: number) => (
                           <li key={idx} className="flex gap-2">
                             <span className="text-primary flex-shrink-0">✓</span>
@@ -378,11 +379,11 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
                     </div>
                   )}
                   {analysisResponse.recommendations.lifestyle && (
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-50/50 dark:from-blue-950/20 dark:to-blue-950/10 border border-blue-200/50">
-                      <p className="font-semibold text-foreground mb-2 flex items-center gap-2">
-                        <span className="text-lg">💪</span> Blood-Healthy Lifestyle
+                    <div className="p-3 md:p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-50/50 dark:from-blue-950/20 dark:to-blue-950/10 border border-blue-200/50">
+                      <p className="font-semibold text-foreground mb-2 flex items-center gap-2 text-xs md:text-sm">
+                        <span className="text-base md:text-lg">💪</span> Blood-Healthy Lifestyle
                       </p>
-                      <ul className="space-y-1 text-sm text-foreground">
+                      <ul className="space-y-1 text-xs md:text-sm text-foreground">
                         {analysisResponse.recommendations.lifestyle.map((item: string, idx: number) => (
                           <li key={idx} className="flex gap-2">
                             <span className="text-primary flex-shrink-0">✓</span>
@@ -393,11 +394,11 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
                     </div>
                   )}
                   {analysisResponse.recommendations.follow_up && (
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-green-50 to-green-50/50 dark:from-green-950/20 dark:to-green-950/10 border border-green-200/50">
-                      <p className="font-semibold text-foreground mb-2 flex items-center gap-2">
-                        <span className="text-lg">📋</span> Blood Work Follow-up
+                    <div className="p-3 md:p-4 rounded-lg bg-gradient-to-br from-green-50 to-green-50/50 dark:from-green-950/20 dark:to-green-950/10 border border-green-200/50">
+                      <p className="font-semibold text-foreground mb-2 flex items-center gap-2 text-xs md:text-sm">
+                        <span className="text-base md:text-lg">📋</span> Blood Work Follow-up
                       </p>
-                      <ul className="space-y-1 text-sm text-foreground">
+                      <ul className="space-y-1 text-xs md:text-sm text-foreground">
                         {analysisResponse.recommendations.follow_up.map((item: string, idx: number) => (
                           <li key={idx} className="flex gap-2">
                             <span className="text-primary flex-shrink-0">✓</span>
