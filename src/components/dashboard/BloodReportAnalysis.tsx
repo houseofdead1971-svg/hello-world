@@ -95,7 +95,7 @@ export const BloodReportAnalysis = ({ userId }: { userId: string }) => {
 
           // Send to webhook
           const response = await fetch(
-            "https://shaven-luz-superideally.ngrok-free.dev/webhook-test/lab",
+            "https://shaven-luz-superideally.ngrok-free.dev/webhook-test/62e1f220-0827-4dbc-84cf-23c8ea9d3cf3",
             {
               method: "POST",
               headers: {
