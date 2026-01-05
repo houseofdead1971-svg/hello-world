@@ -50,7 +50,7 @@ export const AIHealthAssistant = ({ userId }: { userId: string }) => {
           
           // Create ONLY ONE chat instance
           chatInstanceRef.current = window.n8nCreateChat({
-            webhookUrl: 'http://localhost:5678/webhook/f160b160-2ec1-4cb3-9f5e-6f07ea70f0a9/chat',
+            webhookUrl: 'https://shaven-luz-superideally.ngrok-free.dev/webhook/025ec6b9-2d6d-44c9-bdec-cfbc082ef53c/chat',
             target: containerRef.current,
             metadata: {
               userId: userId,
