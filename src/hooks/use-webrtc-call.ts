@@ -169,6 +169,12 @@ export const useWebRTCCall = (
       console.log('[WebRTC] Creating peer connection with config:', configuration);
       const peerConnection = new RTCPeerConnection(configuration);
 
+      // FIX 4: Force transceivers (mobile SAFETY FIX)
+      // Mobile browsers sometimes fail without transceivers even when tracks exist
+      peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+      peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+      console.log('[WebRTC] Added transceivers for mobile compatibility');
+
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           console.log('[WebRTC] ICE candidate generated:', event.candidate.type);
@@ -191,8 +197,16 @@ export const useWebRTCCall = (
 
       // FIX: Safari/some Chrome versions don't populate event.streams
       // Always use MediaStream fallback to ensure tracks are received
+      // FIX 3: Enable video tracks explicitly for mobile compatibility
       peerConnection.ontrack = (event) => {
-        console.log('[WebRTC] Remote track received:', event.track.kind, 'readyState:', event.track.readyState);
+        const track = event.track;
+        console.log('[WebRTC] Remote track received:', track.kind, 'readyState:', track.readyState);
+        
+        // FIX 3: Enable video tracks explicitly (mobile safety)
+        if (track.kind === 'video') {
+          track.enabled = true;
+          console.log('[WebRTC] Video track enabled');
+        }
         
         setState((prev) => {
           let stream = prev.remoteStream;
@@ -204,26 +218,26 @@ export const useWebRTCCall = (
           }
           
           // Add track if not already present
-          const existingTrack = stream.getTracks().find(t => t.id === event.track.id);
+          const existingTrack = stream.getTracks().find(t => t.id === track.id);
           if (!existingTrack) {
-            stream.addTrack(event.track);
-            console.log('[WebRTC] Added remote track:', event.track.kind, 'Total tracks:', stream.getTracks().length);
+            stream.addTrack(track);
+            console.log('[WebRTC] Added remote track:', track.kind, 'Total tracks:', stream.getTracks().length);
           }
           
           return { ...prev, remoteStream: stream };
         });
         
         // Handle track events
-        event.track.onended = () => {
-          console.log('[WebRTC] Remote track ended:', event.track.kind);
+        track.onended = () => {
+          console.log('[WebRTC] Remote track ended:', track.kind);
         };
         
-        event.track.onmute = () => {
-          console.log('[WebRTC] Remote track muted:', event.track.kind);
+        track.onmute = () => {
+          console.log('[WebRTC] Remote track muted:', track.kind);
         };
         
-        event.track.onunmute = () => {
-          console.log('[WebRTC] Remote track unmuted:', event.track.kind);
+        track.onunmute = () => {
+          console.log('[WebRTC] Remote track unmuted:', track.kind);
         };
       };
 
@@ -626,6 +640,10 @@ export const useWebRTCCall = (
 
     isInitiatorRef.current = false;
     reconnectAttemptRef.current = 0;
+    // FIX: Clear localStreamRef to ensure next call gets fresh media
+    localStreamRef.current = null;
+    // FIX: Reset camera state to front-facing for next call
+    currentFacingModeRef.current = 'user';
     toast.success('Call ended');
 
     setTimeout(() => {
@@ -634,26 +652,41 @@ export const useWebRTCCall = (
   }, [state.localStream, userId]);
 
   // Toggle audio
+  // FIX 1: Use RTCRtpSender instead of MediaStream track
+  // This ensures we mute what is actually being sent, even after camera switch/reconnect
   const toggleAudio = useCallback((enabled: boolean) => {
-    if (state.localStream) {
-      state.localStream.getAudioTracks().forEach((track) => {
-        track.enabled = enabled;
-        console.log('[WebRTC] Audio track enabled:', enabled);
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    pc.getSenders()
+      .filter(sender => sender.track?.kind === 'audio')
+      .forEach(sender => {
+        if (sender.track) {
+          sender.track.enabled = enabled;
+          console.log('[WebRTC] Audio sender muted:', !enabled);
+        }
       });
-    }
-  }, [state.localStream]);
+  }, []);
 
   // Toggle video
+  // FIX 2: Use RTCRtpSender instead of MediaStream track
+  // This ensures we disable video what is actually being sent, even after camera switch/reconnect
   const toggleVideo = useCallback((enabled: boolean) => {
-    if (state.localStream) {
-      state.localStream.getVideoTracks().forEach((track) => {
-        track.enabled = enabled;
-        console.log('[WebRTC] Video track enabled:', enabled);
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    pc.getSenders()
+      .filter(sender => sender.track?.kind === 'video')
+      .forEach(sender => {
+        if (sender.track) {
+          sender.track.enabled = enabled;
+          console.log('[WebRTC] Video sender disabled:', !enabled);
+        }
       });
-    }
-  }, [state.localStream]);
+  }, []);
 
   // Switch camera (mobile)
+  // FIX 4: Preserve mute state after replaceTrack
   const switchCamera = useCallback(async () => {
     if (!state.localStream) return;
 
@@ -677,7 +710,16 @@ export const useWebRTCCall = (
       if (pc) {
         const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
         if (sender) {
+          // FIX 4: Preserve mute state before replacing track
+          const isVideoMuted = sender.track?.enabled === false;
+          
           await sender.replaceTrack(newVideoTrack);
+          
+          // FIX 4: Restore mute state on new track
+          if (isVideoMuted) {
+            newVideoTrack.enabled = false;
+            console.log('[WebRTC] Video mute state preserved after camera switch');
+          }
         }
       }
 

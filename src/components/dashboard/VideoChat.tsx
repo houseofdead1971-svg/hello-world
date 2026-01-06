@@ -79,21 +79,41 @@ export const VideoChat = ({
   }, [localStream]);
 
   // Connect remote stream to video element
+  // FIX 2: Attach srcObject in useEffect (NOT inline)
+  // Mobile browsers ignore dynamic stream updates unless you force attach
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play().catch((e) => {
-        console.log('[VideoChat] Remote video play failed:', e);
-        // Retry with muted (autoplay policy)
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.muted = true;
-          remoteVideoRef.current.play().then(() => {
-            if (remoteVideoRef.current) remoteVideoRef.current.muted = false;
-          }).catch(() => {});
-        }
-      });
-    }
+    if (!remoteVideoRef.current || !remoteStream) return;
+
+    console.log('[UI] Attaching remote stream');
+    remoteVideoRef.current.srcObject = remoteStream;
+
+    // Force playback (mobile autoplay fix)
+    const playVideo = async () => {
+      try {
+        await remoteVideoRef.current!.play();
+        console.log('[UI] Remote video playing');
+      } catch (err) {
+        console.warn('[UI] Autoplay blocked, retrying...');
+        setTimeout(playVideo, 300);
+      }
+    };
+
+    playVideo();
   }, [remoteStream]);
+
+  // Defensive fix: Force play when connection becomes connected
+  useEffect(() => {
+    if (connectionStatus === 'connected') {
+      console.log('[UI] Connection established, forcing video play');
+      setTimeout(() => {
+        document.querySelectorAll('video').forEach(v => {
+          v.play().catch(() => {
+            console.log('[UI] Video play retry on connected');
+          });
+        });
+      }, 500);
+    }
+  }, [connectionStatus]);
 
   const handleToggleAudio = () => {
     const newState = !audioEnabled;
@@ -152,7 +172,15 @@ export const VideoChat = ({
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            className="w-full h-full object-cover"
+            muted={false}
+            className="w-full h-full object-cover bg-black"
+            onLoadedMetadata={(e) => {
+              const v = e.currentTarget;
+              v.play().catch(() => {
+                console.log('Autoplay blocked, retrying...');
+                setTimeout(() => v.play(), 300);
+              });
+            }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 px-4">
@@ -310,6 +338,11 @@ export const VideoChat = ({
                 <Button
                   onClick={() => {
                     if (cameraOffMode) setVideoEnabled(false);
+                    // FIX 6: iOS Safari requires user gesture to unlock media playback
+                    document.querySelectorAll('video').forEach(v => {
+                      v.muted = false;
+                      v.play().catch(() => {});
+                    });
                     onAnswerCall();
                   }}
                   className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2 font-semibold"
