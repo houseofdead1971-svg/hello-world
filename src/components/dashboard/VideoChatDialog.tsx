@@ -92,10 +92,13 @@ export const VideoChatDialog = ({
             onEndCall={callActions.endCall}
             onToggleAudio={callActions.toggleAudio}
             onToggleVideo={callActions.toggleVideo}
+            onSwitchCamera={callActions.switchCamera}
             doctorName={doctorName}
             appointmentId={appointmentId}
             userRole={userRole}
             error={callState.error}
+            connectionStatus={callState.connectionStatus}
+            networkQuality={callState.networkQuality}
           />
         </div>
       </DialogContent>
