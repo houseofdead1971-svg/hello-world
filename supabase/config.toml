@@ -2,3 +2,6 @@ project_id = "gfglzrbfolbqxtuytcru"
 
 [functions.health-chat]
 verify_jwt = true
+
+[functions.turn]
+verify_jwt = false

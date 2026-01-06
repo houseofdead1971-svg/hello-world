@@ -93,38 +93,57 @@ export const useWebRTCCall = (
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentFacingModeRef = useRef<'user' | 'environment'>('user');
 
-  // ICE servers configuration with multiple STUN/TURN options
-  const configuration: RTCConfiguration = {
-    iceServers: [
-      // Google STUN servers
+  // Store fetched TURN credentials
+  const turnCredentialsRef = useRef<RTCIceServer[] | null>(null);
+
+  // Fetch TURN credentials from Cloudflare via edge function
+  const fetchTurnCredentials = useCallback(async (): Promise<RTCIceServer[]> => {
+    try {
+      console.log('[WebRTC] Fetching TURN credentials from Cloudflare...');
+      const { data, error } = await supabase.functions.invoke('turn');
+      
+      if (error) {
+        console.error('[WebRTC] Failed to fetch TURN credentials:', error);
+        return [];
+      }
+
+      if (data?.urls && data?.username && data?.credential) {
+        console.log('[WebRTC] ✅ Got Cloudflare TURN credentials');
+        const turnServers: RTCIceServer[] = data.urls.map((url: string) => ({
+          urls: url,
+          username: data.username,
+          credential: data.credential,
+        }));
+        turnCredentialsRef.current = turnServers;
+        return turnServers;
+      }
+      
+      console.warn('[WebRTC] Invalid TURN response, using fallback');
+      return [];
+    } catch (e) {
+      console.error('[WebRTC] Error fetching TURN credentials:', e);
+      return [];
+    }
+  }, []);
+
+  // Build ICE servers configuration
+  const getIceServers = useCallback(async (): Promise<RTCConfiguration> => {
+    const stunServers: RTCIceServer[] = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      // Additional public STUN servers
-      { urls: 'stun:stun.stunprotocol.org:3478' },
-      // OpenRelay TURN servers (free, no auth required)
-      {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      },
-    ],
-    iceCandidatePoolSize: 10,
-    bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require',
-  };
+    ];
+
+    // Fetch Cloudflare TURN credentials
+    const turnServers = await fetchTurnCredentials();
+
+    return {
+      iceServers: [...stunServers, ...turnServers],
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require',
+    };
+  }, [fetchTurnCredentials]);
 
   // Monitor network quality using WebRTC stats
   const startStatsMonitoring = useCallback((pc: RTCPeerConnection) => {
@@ -164,8 +183,9 @@ export const useWebRTCCall = (
   }, []);
 
   // Initialize peer connection
-  const initializePeerConnection = useCallback(() => {
+  const initializePeerConnection = useCallback(async () => {
     try {
+      const configuration = await getIceServers();
       console.log('[WebRTC] Creating peer connection with config:', configuration);
       const peerConnection = new RTCPeerConnection(configuration);
 
@@ -313,7 +333,7 @@ export const useWebRTCCall = (
       setState((prev) => ({ ...prev, error: 'Failed to initialize connection' }));
       throw error;
     }
-  }, [startStatsMonitoring, userRole]);
+  }, [startStatsMonitoring, userRole, getIceServers]);
 
   // Attempt ICE restart for connection recovery
   const attemptIceRestart = useCallback(async (peerConnection: RTCPeerConnection) => {
@@ -412,7 +432,7 @@ export const useWebRTCCall = (
       }
 
       // Initialize peer connection first
-      const peerConnection = initializePeerConnection();
+      const peerConnection = await initializePeerConnection();
 
       // Get media stream
       const stream = await getMediaStream(true);
@@ -700,7 +720,7 @@ export const useWebRTCCall = (
 
         // Create new peer connection if needed
         if (!peerConnection || peerConnection.signalingState === 'closed') {
-          peerConnection = initializePeerConnection();
+          peerConnection = await initializePeerConnection();
         }
 
         const offer = new RTCSessionDescription({
