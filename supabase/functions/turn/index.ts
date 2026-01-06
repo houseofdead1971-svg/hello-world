@@ -1,48 +1,48 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-async function base64HmacSha256(key: string, message: string): Promise<string> {
+function base64HmacSha256(key: string, message: string) {
   const encoder = new TextEncoder();
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(key),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
 
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(message));
-  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return crypto.subtle
+    .importKey(
+      "raw",
+      encoder.encode(key),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    )
+    .then((cryptoKey) =>
+      crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(message))
+    )
+    .then((sig) =>
+      btoa(String.fromCharCode(...new Uint8Array(sig)))
+    );
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
+  // ✅ Handle CORS preflight
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const cfApiToken = Deno.env.get("CF_API_TOKEN");
-    
-    if (!cfApiToken) {
-      console.error('[TURN] CF_API_TOKEN not configured');
-      return new Response(
-        JSON.stringify({ error: 'TURN credentials not configured' }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const ttl = 3600; // 1 hour
     const expiry = Math.floor(Date.now() / 1000) + ttl;
     const username = `${expiry}`;
 
-    const credential = await base64HmacSha256(cfApiToken, username);
+    const secret = Deno.env.get("CF_API_TOKEN");
+    if (!secret) {
+      throw new Error("CF_API_TOKEN not set");
+    }
 
-    console.log('[TURN] Generated TURN credentials for user:', username);
+    const credential = await base64HmacSha256(secret, username);
 
     return new Response(
       JSON.stringify({
@@ -54,13 +54,20 @@ serve(async (req) => {
         username,
         credential,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
     );
-  } catch (error) {
-    console.error('[TURN] Error generating credentials:', error);
+  } catch (err) {
     return new Response(
-      JSON.stringify({ error: 'Failed to generate TURN credentials' }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "TURN credential generation failed" }),
+      {
+        status: 500,
+        headers: corsHeaders,
+      }
     );
   }
 });

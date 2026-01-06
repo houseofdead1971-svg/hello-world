@@ -100,57 +100,30 @@ export const useWebRTCCall = (
   const localStreamRef = useRef<MediaStream | null>(null);
   const lastOfferRef = useRef<RTCSessionDescription | null>(null);
 
-  // Store fetched TURN credentials
-  const turnCredentialsRef = useRef<RTCIceServer[] | null>(null);
-
-  // Fetch TURN credentials from Cloudflare via edge function
-  const fetchTurnCredentials = useCallback(async (): Promise<RTCIceServer[]> => {
-    try {
-      console.log('[WebRTC] Fetching TURN credentials from Cloudflare...');
-      const { data, error } = await supabase.functions.invoke('turn');
-      
-      if (error) {
-        console.error('[WebRTC] Failed to fetch TURN credentials:', error);
-        return [];
-      }
-
-      if (data?.urls && data?.username && data?.credential) {
-        console.log('[WebRTC] ✅ Got Cloudflare TURN credentials');
-        const turnServers: RTCIceServer[] = data.urls.map((url: string) => ({
-          urls: url,
-          username: data.username,
-          credential: data.credential,
-        }));
-        turnCredentialsRef.current = turnServers;
-        return turnServers;
-      }
-      
-      console.warn('[WebRTC] Invalid TURN response, using fallback');
-      return [];
-    } catch (e) {
-      console.error('[WebRTC] Error fetching TURN credentials:', e);
-      return [];
-    }
-  }, []);
-
   // Build ICE servers configuration
   const getIceServers = useCallback(async (): Promise<RTCConfiguration> => {
-    const stunServers: RTCIceServer[] = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-    ];
-
-    // Fetch Cloudflare TURN credentials
-    const turnServers = await fetchTurnCredentials();
-
     return {
-      iceServers: [...stunServers, ...turnServers],
+      iceServers: [
+        // STUN
+        { urls: "stun:global.stun.metered.ca:3478" },
+        { urls: "stun:stun.l.google.com:19302" },
+
+        // TURN (Metered – reliable on mobile networks in India)
+        {
+          urls: [
+            "turn:global.relay.metered.ca:80?transport=udp",
+            "turn:global.relay.metered.ca:443?transport=tcp",
+            "turns:global.relay.metered.ca:443?transport=tcp"
+          ],
+          username: "4bdffd141bb6237f2674daa3",
+          credential: "h1EeHiZKRDlKxaGr"
+        }
+      ],
       iceCandidatePoolSize: 10,
       bundlePolicy: 'max-bundle',
       rtcpMuxPolicy: 'require',
     };
-  }, [fetchTurnCredentials]);
+  }, []);
 
   // Monitor network quality using WebRTC stats
   const startStatsMonitoring = useCallback((pc: RTCPeerConnection) => {
