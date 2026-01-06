@@ -452,6 +452,9 @@ export const useWebRTCCall = (
       await peerConnection.setLocalDescription(offer);
 
       console.log('[WebRTC] Sending offer');
+      if (!signalChannelRef.current) {
+        throw new Error('Signaling channel disconnected. Please try again.');
+      }
       signalChannelRef.current.send({
         type: 'broadcast',
         event: 'offer',
