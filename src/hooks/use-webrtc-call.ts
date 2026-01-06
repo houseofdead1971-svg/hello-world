@@ -99,29 +99,42 @@ export const useWebRTCCall = (
   const currentFacingModeRef = useRef<'user' | 'environment'>('user');
   const localStreamRef = useRef<MediaStream | null>(null);
   const lastOfferRef = useRef<RTCSessionDescription | null>(null);
+  // FIX #3: Guard to prevent multiple concurrent ICE restart timers
+  const iceRestartInProgressRef = useRef<boolean>(false);
 
   // Build ICE servers configuration
+  // FIX #1: Reorder for mobile networks (Indian ISPs block UDP/STUN)
+  // Priority: TURNS TCP > TURN TCP > TURN UDP > STUN
   const getIceServers = useCallback(async (): Promise<RTCConfiguration> => {
     return {
       iceServers: [
-        // STUN
-        { urls: "stun:global.stun.metered.ca:3478" },
-        { urls: "stun:stun.l.google.com:19302" },
-
-        // TURN (Metered – reliable on mobile networks in India)
+        // 🔒 TURN TLS FIRST (most reliable, works on almost all networks)
         {
-          urls: [
-            "turn:global.relay.metered.ca:80?transport=udp",
-            "turn:global.relay.metered.ca:443?transport=tcp",
-            "turns:global.relay.metered.ca:443?transport=tcp"
-          ],
+          urls: "turns:global.relay.metered.ca:443?transport=tcp",
           username: "4bdffd141bb6237f2674daa3",
-          credential: "h1EeHiZKRDlKxaGr"
-        }
+          credential: "h1EeHiZKRDlKxaGr",
+        },
+
+        // TURN TCP fallback
+        {
+          urls: "turn:global.relay.metered.ca:443?transport=tcp",
+          username: "4bdffd141bb6237f2674daa3",
+          credential: "h1EeHiZKRDlKxaGr",
+        },
+
+        // TURN UDP LAST (only if network allows)
+        {
+          urls: "turn:global.relay.metered.ca:80?transport=udp",
+          username: "4bdffd141bb6237f2674daa3",
+          credential: "h1EeHiZKRDlKxaGr",
+        },
+
+        // STUN ABSOLUTE LAST (optional)
+        { urls: "stun:stun.l.google.com:19302" },
       ],
       iceCandidatePoolSize: 10,
-      bundlePolicy: 'max-bundle',
-      rtcpMuxPolicy: 'require',
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
     };
   }, []);
 
@@ -311,16 +324,18 @@ export const useWebRTCCall = (
 
       peerConnection.onicecandidateerror = (event: Event) => {
         const error = event as RTCIceCandidateErrorEvent;
-        console.error('[WebRTC] ICE candidate error:', {
-          address: error.address,
-          port: error.port,
+        
+        // FIX #2: Ignore error code 701 (normal timeout, not a real failure)
+        if (error.errorCode === 701) {
+          console.log('[WebRTC] ICE server timeout (normal on blocked networks)');
+          return;
+        }
+
+        console.warn('[WebRTC] ICE candidate error:', {
           url: error.url,
           errorCode: error.errorCode,
           errorText: error.errorText,
         });
-        if (error.errorCode >= 400 && error.errorCode < 500) {
-          console.error('[WebRTC] Likely TURN authentication failure or network blocking');
-        }
       };
 
       peerConnection.onicegatheringstatechange = () => {
@@ -345,12 +360,20 @@ export const useWebRTCCall = (
 
   // Attempt ICE restart for connection recovery
   // Check signalingState instead of isInitiator to allow callee to recover too
+  // FIX #3: Use guard ref to prevent multiple concurrent ICE restart attempts
   const attemptIceRestart = useCallback(async (peerConnection: RTCPeerConnection) => {
+    if (iceRestartInProgressRef.current) {
+      console.log('[WebRTC] ICE restart already in progress, skipping');
+      return;
+    }
+    
     if (peerConnection.signalingState !== 'stable') {
       console.log('[WebRTC] Cannot restart ICE, signalingState is', peerConnection.signalingState);
       return;
     }
     
+    iceRestartInProgressRef.current = true;
+
     try {
       console.log('[WebRTC] Attempting ICE restart...');
       setState((prev) => ({ ...prev, connectionStatus: 'reconnecting' }));
@@ -363,16 +386,22 @@ export const useWebRTCCall = (
         type: 'broadcast',
         event: 'offer',
         payload: {
-          sdp: peerConnection.localDescription?.sdp,
+          sdp: offer.sdp,
           type: 'offer',
           callerName: userRole === 'doctor' ? 'Doctor' : 'Patient',
           iceRestart: true,
+          senderId: userId,
         },
       });
     } catch (error) {
       console.error('[WebRTC] ICE restart failed:', error);
+    } finally {
+      // FIX #3: Clear guard after 5s to allow next attempt
+      setTimeout(() => {
+        iceRestartInProgressRef.current = false;
+      }, 5000);
     }
-  }, [userRole]);
+  }, [userRole, userId]);
 
   // Get media stream with fallback
   const getMediaStream = useCallback(async (videoEnabled: boolean = true): Promise<MediaStream> => {
