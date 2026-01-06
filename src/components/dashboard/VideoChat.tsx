@@ -84,7 +84,9 @@ export const VideoChat = ({
   useEffect(() => {
     if (!remoteVideoRef.current || !remoteStream) return;
 
-    console.log('[UI] Attaching remote stream');
+    console.log('[UI] Attaching remote stream with tracks:', 
+      remoteStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState }))
+    );
     remoteVideoRef.current.srcObject = remoteStream;
 
     // Force playback (mobile autoplay fix)
@@ -172,7 +174,7 @@ export const VideoChat = ({
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            muted={false}
+            muted={true}
             className="w-full h-full object-cover bg-black"
             onLoadedMetadata={(e) => {
               const v = e.currentTarget;
