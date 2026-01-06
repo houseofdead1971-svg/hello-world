@@ -92,6 +92,8 @@ export const useWebRTCCall = (
   const reconnectAttemptRef = useRef<number>(0);
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentFacingModeRef = useRef<'user' | 'environment'>('user');
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const lastOfferRef = useRef<RTCSessionDescription | null>(null);
 
   // Store fetched TURN credentials
   const turnCredentialsRef = useRef<RTCIceServer[] | null>(null);
@@ -275,13 +277,13 @@ export const useWebRTCCall = (
               connectionStatus: 'reconnecting',
               error: 'Connection interrupted. Reconnecting...',
             }));
-            // Attempt ICE restart after short delay
+            // Wait 5-10s before ICE restart (mobile networks flap frequently)
             setTimeout(() => {
               if (peerConnection.connectionState === 'disconnected' && reconnectAttemptRef.current < 3) {
                 reconnectAttemptRef.current++;
                 attemptIceRestart(peerConnection);
               }
-            }, 2000);
+            }, 8000);
             break;
           case 'failed':
             console.log('[WebRTC] ❌ Connection failed');
@@ -315,6 +317,20 @@ export const useWebRTCCall = (
         }
       };
 
+      peerConnection.onicecandidateerror = (event: Event) => {
+        const error = event as RTCIceCandidateErrorEvent;
+        console.error('[WebRTC] ICE candidate error:', {
+          address: error.address,
+          port: error.port,
+          url: error.url,
+          errorCode: error.errorCode,
+          errorText: error.errorText,
+        });
+        if (error.errorCode >= 400 && error.errorCode < 500) {
+          console.error('[WebRTC] Likely TURN authentication failure or network blocking');
+        }
+      };
+
       peerConnection.onicegatheringstatechange = () => {
         console.log('[WebRTC] ICE gathering state:', peerConnection.iceGatheringState);
       };
@@ -336,8 +352,12 @@ export const useWebRTCCall = (
   }, [startStatsMonitoring, userRole, getIceServers]);
 
   // Attempt ICE restart for connection recovery
+  // Check signalingState instead of isInitiator to allow callee to recover too
   const attemptIceRestart = useCallback(async (peerConnection: RTCPeerConnection) => {
-    if (!isInitiatorRef.current) return;
+    if (peerConnection.signalingState !== 'stable') {
+      console.log('[WebRTC] Cannot restart ICE, signalingState is', peerConnection.signalingState);
+      return;
+    }
     
     try {
       console.log('[WebRTC] Attempting ICE restart...');
@@ -345,6 +365,7 @@ export const useWebRTCCall = (
       
       const offer = await peerConnection.createOffer({ iceRestart: true });
       await peerConnection.setLocalDescription(offer);
+      lastOfferRef.current = peerConnection.localDescription;
       
       signalChannelRef.current?.send({
         type: 'broadcast',
@@ -434,15 +455,18 @@ export const useWebRTCCall = (
       // Initialize peer connection first
       const peerConnection = await initializePeerConnection();
 
-      // Get media stream
-      const stream = await getMediaStream(true);
-      setState((prev) => ({ ...prev, localStream: stream }));
+      // Get media stream using ref to prevent duplicate tracks
+      if (!localStreamRef.current) {
+        const stream = await getMediaStream(true);
+        localStreamRef.current = stream;
+        setState((prev) => ({ ...prev, localStream: stream }));
 
-      // Add tracks to peer connection
-      stream.getTracks().forEach((track) => {
-        console.log('[WebRTC] Adding local track:', track.kind);
-        peerConnection.addTrack(track, stream);
-      });
+        // Add tracks to peer connection
+        stream.getTracks().forEach((track) => {
+          console.log('[WebRTC] Adding local track:', track.kind);
+          peerConnection.addTrack(track, stream);
+        });
+      }
 
       // Create and send offer
       const offer = await peerConnection.createOffer({
@@ -455,6 +479,7 @@ export const useWebRTCCall = (
       if (!signalChannelRef.current) {
         throw new Error('Signaling channel disconnected. Please try again.');
       }
+      lastOfferRef.current = peerConnection.localDescription;
       signalChannelRef.current.send({
         type: 'broadcast',
         event: 'offer',
@@ -465,6 +490,23 @@ export const useWebRTCCall = (
           senderId: userId,
         },
       });
+
+      // Resend offer if no answer received after 3s (handles lost messages in unreliable Supabase Realtime)
+      setTimeout(() => {
+        if (peerConnection.signalingState === 'have-local-offer' && lastOfferRef.current) {
+          console.log('[WebRTC] No answer received, resending offer');
+          signalChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'offer',
+            payload: {
+              sdp: lastOfferRef.current.sdp,
+              type: 'offer',
+              callerName: userRole === 'doctor' ? 'Doctor' : 'Patient',
+              senderId: userId,
+            },
+          });
+        }
+      }, 3000);
 
       // Set timeout for answer
       if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
@@ -506,9 +548,11 @@ export const useWebRTCCall = (
 
       // Tracks should already be added in handleOffer
       // But if not (e.g., media failed earlier), try to add them now
-      if (!state.localStream) {
+      // Use ref to prevent duplicate tracks from async state race conditions
+      if (!localStreamRef.current) {
         console.log('[WebRTC] No local stream, getting media now');
         const stream = await getMediaStream(true);
+        localStreamRef.current = stream;
         setState((prev) => ({ ...prev, localStream: stream }));
         
         stream.getTracks().forEach((track) => {
@@ -545,7 +589,7 @@ export const useWebRTCCall = (
       }));
       toast.error(errorMsg);
     }
-  }, [getMediaStream, userId, state.localStream]);
+  }, [getMediaStream, userId]);
 
   // End call
   const endCall = useCallback((fromRemote: boolean = false) => {
@@ -734,17 +778,22 @@ export const useWebRTCCall = (
         await peerConnection.setRemoteDescription(offer);
         console.log('[WebRTC] Set remote offer');
 
-        // FIX: Add local tracks IMMEDIATELY after setting remote description
+        // FIX: Add local tracks IMMEDIATELY after setting remote description (use ref to prevent duplicates)
         // This ensures transceivers are properly configured before creating answer
         try {
-          const stream = await getMediaStream(true);
-          setState((prev) => ({ ...prev, localStream: stream }));
-          
-          stream.getTracks().forEach((track) => {
-            console.log('[WebRTC] Adding local track after offer:', track.kind);
-            peerConnection!.addTrack(track, stream);
-          });
-          console.log('[WebRTC] Local tracks added, ready to create answer');
+          if (!localStreamRef.current) {
+            const stream = await getMediaStream(true);
+            localStreamRef.current = stream;
+            setState((prev) => ({ ...prev, localStream: stream }));
+            
+            stream.getTracks().forEach((track) => {
+              console.log('[WebRTC] Adding local track after offer:', track.kind);
+              peerConnection!.addTrack(track, stream);
+            });
+            console.log('[WebRTC] Local tracks added, ready to create answer');
+          } else {
+            console.log('[WebRTC] Local tracks already added in handleOffer');
+          }
         } catch (mediaError) {
           console.error('[WebRTC] Failed to get media in handleOffer:', mediaError);
           // Continue anyway - user can still try to answer
