@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Copy, Check } from 'lucide-react';
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Copy, Check, SwitchCamera, Wifi, WifiOff, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -16,11 +16,25 @@ interface VideoChatProps {
   onEndCall: () => void;
   onToggleAudio: (enabled: boolean) => void;
   onToggleVideo: (enabled: boolean) => void;
+  onSwitchCamera?: () => Promise<void>;
   doctorName: string;
   appointmentId: string;
   userRole: 'doctor' | 'patient';
   error?: string | null;
+  connectionStatus?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed';
+  networkQuality?: 'good' | 'poor' | 'unknown';
 }
+
+// Check if device has multiple cameras (for mobile switch button)
+const checkMultipleCameras = async (): Promise<boolean> => {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+    return videoInputs.length > 1;
+  } catch {
+    return false;
+  }
+};
 
 export const VideoChat = ({
   localStream,
@@ -33,10 +47,13 @@ export const VideoChat = ({
   onEndCall,
   onToggleAudio,
   onToggleVideo,
+  onSwitchCamera,
   doctorName,
   appointmentId,
   userRole,
   error,
+  connectionStatus = 'idle',
+  networkQuality = 'unknown',
 }: VideoChatProps) => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -45,11 +62,19 @@ export const VideoChat = ({
   const [cameraOffMode, setCameraOffMode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expandRemote, setExpandRemote] = useState(false);
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Check for multiple cameras on mount
+  useEffect(() => {
+    checkMultipleCameras().then(setHasMultipleCameras);
+  }, []);
 
   // Connect local stream to video element
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
     }
   }, [localStream]);
 
@@ -57,6 +82,16 @@ export const VideoChat = ({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play().catch((e) => {
+        console.log('[VideoChat] Remote video play failed:', e);
+        // Retry with muted (autoplay policy)
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.muted = true;
+          remoteVideoRef.current.play().then(() => {
+            if (remoteVideoRef.current) remoteVideoRef.current.muted = false;
+          }).catch(() => {});
+        }
+      });
     }
   }, [remoteStream]);
 
@@ -79,11 +114,39 @@ export const VideoChat = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+  // Connection status display
+  const getStatusDisplay = () => {
+    switch (connectionStatus) {
+      case 'connecting':
+        return { text: 'Connecting...', color: 'bg-yellow-500', animate: true };
+      case 'connected':
+        return { text: 'Connected', color: 'bg-green-500', animate: false };
+      case 'reconnecting':
+        return { text: 'Reconnecting...', color: 'bg-orange-500', animate: true };
+      case 'failed':
+        return { text: 'Connection Failed', color: 'bg-red-500', animate: false };
+      default:
+        return null;
+    }
+  };
+
+  const statusDisplay = getStatusDisplay();
+
   return (
-    <div className="w-full h-full flex flex-col gap-4 p-4 min-h-0">
+    <div className={cn(
+      "w-full h-full flex flex-col gap-4 p-4 min-h-0",
+      isFullscreen && "fixed inset-0 z-50 bg-black p-0"
+    )}>
       {/* Video Container */}
-      <div className="flex-1 relative bg-black rounded-lg overflow-hidden min-h-[200px] sm:min-h-[300px]">
-        {/* Remote Video - show if stream exists (don't wait for isCallActive) */}
+      <div className={cn(
+        "flex-1 relative bg-black rounded-lg overflow-hidden min-h-[200px] sm:min-h-[300px]",
+        isFullscreen && "rounded-none min-h-full"
+      )}>
+        {/* Remote Video */}
         {remoteStream ? (
           <video
             ref={remoteVideoRef}
@@ -96,7 +159,11 @@ export const VideoChat = ({
             <div className="text-center">
               <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">📞</div>
               <p className="text-white mb-1 sm:mb-2 text-sm sm:text-base">
-                {isCalling ? 'Calling...' : isAnswering ? 'Ready to answer' : 'Waiting for connection'}
+                {connectionStatus === 'connecting' && 'Connecting...'}
+                {connectionStatus === 'reconnecting' && 'Reconnecting...'}
+                {isCalling && connectionStatus !== 'connecting' && 'Calling...'}
+                {isAnswering && connectionStatus !== 'connecting' && 'Ready to answer'}
+                {connectionStatus === 'idle' && !isCalling && !isAnswering && 'Waiting for connection'}
               </p>
               <p className="text-xs sm:text-sm text-gray-400 truncate max-w-xs">{doctorName}</p>
             </div>
@@ -107,13 +174,13 @@ export const VideoChat = ({
         <div
           className={cn(
             'absolute rounded-lg overflow-hidden border-2 border-primary cursor-pointer transition-all hover:scale-105',
-            expandRemote 
-              ? 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-20 h-16 sm:w-32 sm:h-24' 
+            expandRemote
+              ? 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-20 h-16 sm:w-32 sm:h-24'
               : 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-24 h-20 sm:w-48 sm:h-36'
           )}
           onClick={() => setExpandRemote(!expandRemote)}
         >
-          {localStream && (
+          {localStream ? (
             <video
               ref={localVideoRef}
               autoPlay
@@ -121,24 +188,52 @@ export const VideoChat = ({
               muted
               className="w-full h-full object-cover"
             />
-          )}
-          {!localStream && (
+          ) : (
             <div className="w-full h-full bg-slate-700 flex items-center justify-center">
               <span className="text-xs text-gray-400">Camera off</span>
             </div>
           )}
         </div>
 
-        {/* Call Status Badge */}
-        {isCallActive && (
-          <div className="absolute top-2 left-2 sm:top-4 sm:left-4 bg-green-500/80 text-white px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-semibold animate-pulse">
-            Call Active
+        {/* Connection Status Badge */}
+        {statusDisplay && (
+          <div className={cn(
+            "absolute top-2 left-2 sm:top-4 sm:left-4 text-white px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex items-center gap-1",
+            statusDisplay.color,
+            statusDisplay.animate && "animate-pulse"
+          )}>
+            {connectionStatus === 'connected' && <Wifi className="h-3 w-3" />}
+            {connectionStatus === 'failed' && <WifiOff className="h-3 w-3" />}
+            {statusDisplay.text}
           </div>
+        )}
+
+        {/* Network Quality Indicator */}
+        {isCallActive && networkQuality === 'poor' && (
+          <div className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-orange-500/80 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1">
+            <WifiOff className="h-3 w-3" />
+            Poor Network
+          </div>
+        )}
+
+        {/* Fullscreen Toggle */}
+        {isCallActive && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/50 hover:bg-black/70 text-white"
+            onClick={toggleFullscreen}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
         )}
       </div>
 
       {/* Controls */}
-      <Card className="bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col max-h-[40vh] sm:max-h-[35vh] overflow-hidden">
+      <Card className={cn(
+        "bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col max-h-[40vh] sm:max-h-[35vh] overflow-hidden",
+        isFullscreen && "absolute bottom-4 left-4 right-4 max-h-[30vh]"
+      )}>
         <CardContent className="pt-4 sm:pt-6 overflow-y-auto flex-1">
           {!isCallActive && !isCalling && !isAnswering ? (
             // Pre-Call State
@@ -148,7 +243,7 @@ export const VideoChat = ({
                   <p className="text-xs sm:text-sm font-medium text-red-600 mb-1 sm:mb-2">❌ Error:</p>
                   <p className="text-xs sm:text-sm text-red-700">{error}</p>
                   <p className="text-xs text-red-600 mt-1 sm:mt-2 font-medium">
-                    💡 Solution: Check if your camera/microphone are enabled and not in use by another app. Refresh and try again.
+                    💡 Check camera/mic permissions and close other apps using them.
                   </p>
                 </div>
               )}
@@ -161,134 +256,103 @@ export const VideoChat = ({
                     onChange={(e) => setCameraOffMode(e.target.checked)}
                     className="w-4 h-4"
                   />
-                  <span className="text-xs sm:text-sm font-medium truncate">{cameraOffMode ? '📹 Camera OFF' : '📹 Camera ON'}</span>
+                  <span className="text-xs sm:text-sm font-medium truncate">
+                    {cameraOffMode ? '📹 Join with Camera OFF' : '📹 Join with Camera ON'}
+                  </span>
                 </label>
-                <p className="text-xs text-muted-foreground px-1">
-                  {cameraOffMode ? 'Turn camera on during call' : 'Share your camera with doctor'}
-                </p>
               </div>
 
               <Button
                 onClick={() => {
-                  if (cameraOffMode) {
-                    setVideoEnabled(false);
-                  }
+                  if (cameraOffMode) setVideoEnabled(false);
                   onStartCall();
                 }}
                 className="w-full bg-green-600 hover:bg-green-700 text-white gap-2 text-sm sm:text-base"
-                disabled={isCalling || !!error}
+                disabled={isCalling}
               >
                 <Phone className="h-4 w-4" />
-                {isCalling ? 'Connecting...' : userRole === 'doctor' ? 'Start Call' : 'Call Doctor'}
+                {userRole === 'doctor' ? 'Start Call' : 'Call Doctor'}
               </Button>
 
-              {userRole === 'patient' && (
-                <div className="text-xs sm:text-sm text-muted-foreground text-center">
-                  <p>Click above to initiate the video call</p>
-                  <p className="text-xs mt-0.5">Microphone must be enabled</p>
-                </div>
-              )}
-
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
-                <p className="font-medium text-blue-600 mb-1 sm:mb-2">📋 Permission:</p>
-                <ul className="text-xs space-y-0.5 text-blue-700">
-                  <li>✓ Allow camera/microphone when asked</li>
-                  <li>✓ Can join with camera OFF</li>
-                  <li>✓ Check browser settings if blocked</li>
-                  <li>✓ Close other camera apps</li>
-                  <li>✓ Toggle during call</li>
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 sm:p-3 text-xs">
+                <p className="font-medium text-blue-600 mb-1">📋 Before calling:</p>
+                <ul className="space-y-0.5 text-blue-700">
+                  <li>✓ Allow camera/microphone access</li>
+                  <li>✓ Use Chrome, Edge, Firefox, or Safari</li>
+                  <li>✓ Stable internet connection</li>
                 </ul>
               </div>
             </div>
-          ) : isAnswering ? (
-            // Incoming Call State - with camera preference setup
+          ) : isAnswering && !isCallActive ? (
+            // Incoming Call State
             <div className="space-y-3 sm:space-y-4">
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 sm:p-4">
-                <p className="text-center font-semibold mb-2 sm:mb-4 text-blue-500 text-sm sm:text-base truncate">
+                <p className="text-center font-semibold mb-2 text-blue-500 text-sm sm:text-base truncate animate-pulse">
                   📞 Incoming call from {doctorName}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <label className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-2 sm:p-3 rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800 transition">
+                <label className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-2 sm:p-3 rounded-lg cursor-pointer">
                   <input
                     type="checkbox"
                     checked={cameraOffMode}
                     onChange={(e) => setCameraOffMode(e.target.checked)}
                     className="w-4 h-4"
                   />
-                  <span className="text-xs sm:text-sm font-medium truncate">{cameraOffMode ? '📹 Camera OFF' : '📹 Camera ON'}</span>
+                  <span className="text-xs sm:text-sm font-medium">
+                    {cameraOffMode ? '📹 Camera OFF' : '📹 Camera ON'}
+                  </span>
                 </label>
-                <p className="text-xs text-muted-foreground px-1">
-                  {cameraOffMode ? 'Join without sharing' : 'Share your camera'}
-                </p>
               </div>
 
-              {/* Answer/Decline Buttons */}
               <div className="flex gap-2 sm:gap-3">
                 <Button
                   onClick={() => {
-                    if (cameraOffMode) {
-                      setVideoEnabled(false);
-                    }
+                    if (cameraOffMode) setVideoEnabled(false);
                     onAnswerCall();
                   }}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2 text-sm sm:text-base font-semibold"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2 font-semibold"
                 >
                   <Phone className="h-4 w-4" />
-                  <span>Answer</span>
+                  Answer
                 </Button>
                 <Button
                   onClick={onEndCall}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white gap-2 text-sm sm:text-base font-semibold"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white gap-2 font-semibold"
                 >
                   <PhoneOff className="h-4 w-4" />
-                  <span>Decline</span>
+                  Decline
                 </Button>
               </div>
-
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
-                <p className="font-medium text-blue-600">💡 Tip:</p>
-                <p className="text-xs text-blue-600 mt-1">
-                  Choose your camera preference above, then click Answer or Decline
-                </p>
-              </div>
             </div>
-          ) : isCalling ? (
+          ) : isCalling && !isCallActive ? (
             // Calling State
             <div className="space-y-3 sm:space-y-4">
               <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 sm:p-4">
-                <p className="text-center font-semibold text-yellow-600 animate-pulse text-sm sm:text-base truncate">
+                <p className="text-center font-semibold text-yellow-600 animate-pulse text-sm sm:text-base">
                   Calling {doctorName}...
                 </p>
-                <p className="text-center text-xs text-yellow-600 mt-1 sm:mt-2">
+                <p className="text-center text-xs text-yellow-600 mt-2">
                   Waiting for {userRole === 'doctor' ? 'patient' : 'doctor'} to answer...
                 </p>
               </div>
 
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
-                <p className="font-medium text-blue-600 mb-1 sm:mb-2">⏳ Waiting:</p>
-                <ul className="text-xs space-y-0.5 text-blue-700">
-                  <li>✓ They need to open the call</li>
-                  <li>✓ Click "Answer" to connect</li>
-                  <li>✓ Timeout in 30 seconds</li>
-                </ul>
-              </div>
-
               <Button
                 onClick={onEndCall}
-                className="w-full bg-red-600 hover:bg-red-700 text-white gap-2 text-sm sm:text-base"
+                className="w-full bg-red-600 hover:bg-red-700 text-white gap-2"
               >
                 <PhoneOff className="h-4 w-4" />
-                Cancel
+                Cancel Call
               </Button>
             </div>
           ) : (
             // Active Call State
             <div className="space-y-3 sm:space-y-4">
-              {/* Call Duration & Info */}
-              <div className="text-center mb-2 sm:mb-4">
-                <p className="text-xs sm:text-sm text-muted-foreground truncate">Connected with {doctorName}</p>
+              <div className="text-center mb-2">
+                <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                  Connected with {doctorName}
+                </p>
               </div>
 
               {/* Media Controls */}
@@ -297,53 +361,42 @@ export const VideoChat = ({
                   onClick={handleToggleAudio}
                   variant={audioEnabled ? 'default' : 'destructive'}
                   size="sm"
-                  className="gap-1 text-xs sm:text-sm sm:size-lg flex-1 min-w-[80px]"
+                  className="gap-1 text-xs sm:text-sm flex-1 min-w-[70px]"
                 >
-                  {audioEnabled ? (
-                    <>
-                      <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
-                      <span className="hidden sm:inline">Mute</span>
-                      <span className="sm:hidden">Mute</span>
-                    </>
-                  ) : (
-                    <>
-                      <MicOff className="h-3 w-3 sm:h-4 sm:w-4" />
-                      <span className="hidden sm:inline">Unmute</span>
-                      <span className="sm:hidden">Unmute</span>
-                    </>
-                  )}
+                  {audioEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{audioEnabled ? 'Mute' : 'Unmute'}</span>
                 </Button>
 
                 <Button
                   onClick={handleToggleVideo}
                   variant={videoEnabled ? 'default' : 'destructive'}
                   size="sm"
-                  className="gap-1 text-xs sm:text-sm sm:size-lg flex-1 min-w-[80px]"
+                  className="gap-1 text-xs sm:text-sm flex-1 min-w-[70px]"
                 >
-                  {videoEnabled ? (
-                    <>
-                      <Video className="h-3 w-3 sm:h-4 sm:w-4" />
-                      <span className="hidden sm:inline">Stop</span>
-                      <span className="sm:hidden">Stop</span>
-                    </>
-                  ) : (
-                    <>
-                      <VideoOff className="h-3 w-3 sm:h-4 sm:w-4" />
-                      <span className="hidden sm:inline">Start</span>
-                      <span className="sm:hidden">Start</span>
-                    </>
-                  )}
+                  {videoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                  <span className="hidden sm:inline">{videoEnabled ? 'Stop' : 'Start'}</span>
                 </Button>
+
+                {hasMultipleCameras && onSwitchCamera && (
+                  <Button
+                    onClick={onSwitchCamera}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs sm:text-sm"
+                  >
+                    <SwitchCamera className="h-4 w-4" />
+                    <span className="hidden sm:inline">Switch</span>
+                  </Button>
+                )}
 
                 <Button
                   onClick={onEndCall}
                   variant="destructive"
                   size="sm"
-                  className="gap-1 text-xs sm:text-sm sm:size-lg flex-1 min-w-[80px]"
+                  className="gap-1 text-xs sm:text-sm flex-1 min-w-[70px]"
                 >
-                  <PhoneOff className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <PhoneOff className="h-4 w-4" />
                   <span className="hidden sm:inline">End</span>
-                  <span className="sm:hidden">End</span>
                 </Button>
               </div>
 
@@ -351,23 +404,12 @@ export const VideoChat = ({
               <div className="bg-slate-100 dark:bg-slate-900 rounded-lg p-2 sm:p-3 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Appointment ID</p>
-                  <p className="font-mono text-xs sm:text-sm font-semibold truncate">{appointmentId.slice(0, 10)}...</p>
+                  <p className="font-mono text-xs sm:text-sm font-semibold truncate">
+                    {appointmentId.slice(0, 10)}...
+                  </p>
                 </div>
-                <Button
-                  onClick={handleCopyAppointmentId}
-                  size="sm"
-                  variant="ghost"
-                  className="gap-1 flex-shrink-0"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="h-3 w-3 sm:h-4 sm:w-4 text-green-500" />
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
-                    </>
-                  )}
+                <Button onClick={handleCopyAppointmentId} size="sm" variant="ghost" className="flex-shrink-0">
+                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
@@ -375,15 +417,14 @@ export const VideoChat = ({
         </CardContent>
       </Card>
 
-      {/* Info Message */}
-      {!isCallActive && (
-        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-2 sm:p-3 text-xs sm:text-sm text-blue-900 dark:text-blue-200">
-          <p className="font-semibold mb-1">💡 Video Call Tips:</p>
-          <ul className="list-disc list-inside space-y-0.5 text-xs">
-            <li>Ensure your camera and microphone are working</li>
-            <li>Use a stable internet connection</li>
-            <li>Position yourself with good lighting</li>
-            <li>The video will start once both parties are connected</li>
+      {/* Tips when not in call */}
+      {!isCallActive && !isFullscreen && (
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-2 sm:p-3 text-xs">
+          <p className="font-semibold mb-1">💡 Tips:</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li>Works on Chrome, Edge, Firefox, Safari (including iOS)</li>
+            <li>Both parties need to open the call dialog</li>
+            <li>Use stable WiFi or mobile data</li>
           </ul>
         </div>
       )}
