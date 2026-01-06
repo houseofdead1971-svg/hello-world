@@ -224,9 +224,15 @@ export const useWebRTCCall = (
       // FIX: Safari/some Chrome versions don't populate event.streams
       // Always use MediaStream fallback to ensure tracks are received
       // FIX 3: Enable video tracks explicitly for mobile compatibility
+      // FIX (DESKTOP CHROME): Create NEW MediaStream object (immutable) to force React re-render
       peerConnection.ontrack = (event) => {
         const track = event.track;
-        console.log('[WebRTC] Remote track received:', track.kind, 'readyState:', track.readyState);
+        console.log('[WebRTC] Remote track received:', {
+          kind: track.kind,
+          readyState: track.readyState,
+          enabled: track.enabled,
+          trackId: track.id,
+        });
         
         // FIX 3: Enable video tracks explicitly (mobile safety)
         if (track.kind === 'video') {
@@ -235,22 +241,22 @@ export const useWebRTCCall = (
         }
         
         setState((prev) => {
-          let stream = prev.remoteStream;
-          
-          // Create new stream if none exists
-          if (!stream) {
-            stream = new MediaStream();
-            console.log('[WebRTC] Created new remote MediaStream');
-          }
+          // FIX (DESKTOP CHROME): CRITICAL - Create immutable copy
+          // Without this, React doesn't re-render because object reference doesn't change
+          const existingStream = prev.remoteStream ?? new MediaStream();
           
           // Add track if not already present
-          const existingTrack = stream.getTracks().find(t => t.id === track.id);
+          const existingTrack = existingStream.getTracks().find(t => t.id === track.id);
           if (!existingTrack) {
-            stream.addTrack(track);
-            console.log('[WebRTC] Added remote track:', track.kind, 'Total tracks:', stream.getTracks().length);
+            existingStream.addTrack(track);
+            console.log('[WebRTC] Added remote track:', track.kind, 'Total tracks:', existingStream.getTracks().length);
           }
           
-          return { ...prev, remoteStream: stream };
+          // FIX (DESKTOP CHROME): Return NEW MediaStream object (forces React re-render)
+          return {
+            ...prev,
+            remoteStream: new MediaStream(existingStream.getTracks())
+          };
         });
         
         // Handle track events

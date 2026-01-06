@@ -81,22 +81,35 @@ export const VideoChat = ({
   // Connect remote stream to video element
   // FIX 2: Attach srcObject in useEffect (NOT inline)
   // Mobile browsers ignore dynamic stream updates unless you force attach
+  // FIX (DESKTOP CHROME): Must explicitly call .play() - autoplay doesn't work without user gesture
   useEffect(() => {
     if (!remoteVideoRef.current || !remoteStream) return;
 
-    console.log('[UI] Attaching remote stream with tracks:', 
+    console.log('[UI] Remote stream changed, tracks:', 
       remoteStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState }))
     );
+    
     remoteVideoRef.current.srcObject = remoteStream;
 
-    // Force playback (mobile autoplay fix)
+    // FIX (DESKTOP CHROME): CRITICAL - Force playback on desktop
+    // Desktop Chrome blocks autoplay even with autoplay attribute unless explicitly called
     const playVideo = async () => {
+      if (!remoteVideoRef.current) return;
+      
       try {
-        await remoteVideoRef.current!.play();
-        console.log('[UI] Remote video playing');
-      } catch (err) {
-        console.warn('[UI] Autoplay blocked, retrying...');
-        setTimeout(playVideo, 300);
+        console.log('[UI] Attempting to play remote video...');
+        await remoteVideoRef.current.play();
+        console.log('[UI] Remote video playing successfully');
+      } catch (err: any) {
+        console.warn('[UI] Play failed:', err.name, err.message);
+        // Retry after 300ms (accounts for transceiver setup delay)
+        setTimeout(() => {
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.play().catch(e => 
+              console.warn('[UI] Retry play failed:', e.name)
+            );
+          }
+        }, 300);
       }
     };
 
