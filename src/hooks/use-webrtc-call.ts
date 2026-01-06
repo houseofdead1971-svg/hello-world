@@ -27,12 +27,17 @@ interface WebRTCCallActions {
   switchCamera: () => Promise<void>;
 }
 
-// Detect browser for Safari-specific handling
-const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
 // Get optimal media constraints for the browser
+// FIX: Moved browser detection inside function to avoid SSR hydration mismatch (#418)
 const getMediaConstraints = (videoEnabled: boolean = true) => {
+  const isSafari =
+    typeof navigator !== 'undefined' &&
+    /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+  const isIOS =
+    typeof navigator !== 'undefined' &&
+    /iPad|iPhone|iPod/.test(navigator.userAgent);
+
   const baseConstraints = {
     audio: {
       echoCancellation: true,
