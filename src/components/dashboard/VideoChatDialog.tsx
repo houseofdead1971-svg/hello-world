@@ -68,13 +68,14 @@ export const VideoChatDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl w-[95vw] sm:h-[90vh] h-[95vh] flex flex-col p-4 sm:p-6">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center justify-between pr-8">
-            <span className="text-lg sm:text-xl">Video Appointment with {doctorName}</span>
+      <DialogContent className="max-w-4xl w-[98vw] sm:w-[95vw] h-[100dvh] sm:h-[90vh] flex flex-col p-0 sm:p-4 gap-0 rounded-none sm:rounded-xl border-0 sm:border">
+        <DialogHeader className="flex-shrink-0 px-4 pt-4 sm:px-0 sm:pt-0 pb-2">
+          <DialogTitle className="flex items-center justify-between pr-8 gap-2">
+            <span className="text-base sm:text-xl font-semibold truncate flex-1">{doctorName}</span>
             {callState.isCallActive && (
-              <span className="text-xs px-2 py-1 bg-green-500/20 text-green-500 rounded-full animate-pulse">
-                Call Active
+              <span className="text-[10px] px-2 py-0.5 bg-green-500/20 text-green-600 rounded-full flex items-center gap-1 flex-shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Live
               </span>
             )}
           </DialogTitle>
