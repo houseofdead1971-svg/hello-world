@@ -101,6 +101,9 @@ export const useWebRTCCall = (
   const lastOfferRef = useRef<RTCSessionDescription | null>(null);
   // FIX #3: Guard to prevent multiple concurrent ICE restart timers
   const iceRestartInProgressRef = useRef<boolean>(false);
+  // FIX (PERSISTENT MUTE): Track audio/video mute state across reconnects/replaceTrack
+  const isAudioEnabledRef = useRef<boolean>(true);
+  const isVideoEnabledRef = useRef<boolean>(true);
 
   // Build ICE servers configuration
   // FIX #1: Reorder for mobile networks (Indian ISPs block UDP/STUN)
@@ -188,21 +191,31 @@ export const useWebRTCCall = (
       peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
       console.log('[WebRTC] Added transceivers for mobile compatibility');
 
+      // FIX (PERSISTENT MUTE): Restore mute state when tracks are added
+      peerConnection.getSenders().forEach(sender => {
+        if (sender.track?.kind === 'audio')
+          sender.track.enabled = isAudioEnabledRef.current;
+        if (sender.track?.kind === 'video')
+          sender.track.enabled = isVideoEnabledRef.current;
+      });
+
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           console.log('[WebRTC] ICE candidate generated:', event.candidate.type);
-          if (signalChannelRef.current) {
-            signalChannelRef.current.send({
-              type: 'broadcast',
-              event: 'ice-candidate',
-              payload: {
-                candidate: event.candidate.candidate,
-                sdpMLineIndex: event.candidate.sdpMLineIndex,
-                sdpMid: event.candidate.sdpMid,
-                usernameFragment: event.candidate.usernameFragment,
-              },
-            });
+          if (!signalChannelRef.current) {
+            console.warn('[WebRTC] Signaling channel not ready for ICE candidate');
+            return;
           }
+          signalChannelRef.current.send({
+            type: 'broadcast',
+            event: 'ice-candidate',
+            payload: {
+              candidate: event.candidate.candidate,
+              sdpMLineIndex: event.candidate.sdpMLineIndex,
+              sdpMid: event.candidate.sdpMid,
+              usernameFragment: event.candidate.usernameFragment,
+            },
+          });
         } else {
           console.log('[WebRTC] ICE gathering complete');
         }
@@ -323,7 +336,7 @@ export const useWebRTCCall = (
       };
 
       peerConnection.onicecandidateerror = (event: Event) => {
-        const error = event as RTCIceCandidateErrorEvent;
+        const error = event as any;
         
         // FIX #2: Ignore error code 701 (normal timeout, not a real failure)
         if (error.errorCode === 701) {
@@ -382,7 +395,11 @@ export const useWebRTCCall = (
       await peerConnection.setLocalDescription(offer);
       lastOfferRef.current = peerConnection.localDescription;
       
-      signalChannelRef.current?.send({
+      if (!signalChannelRef.current) {
+        console.warn('[WebRTC] Signaling channel not ready for ICE restart offer');
+        return;
+      }
+      signalChannelRef.current.send({
         type: 'broadcast',
         event: 'offer',
         payload: {
@@ -501,6 +518,9 @@ export const useWebRTCCall = (
         throw new Error('Signaling channel disconnected. Please try again.');
       }
       lastOfferRef.current = peerConnection.localDescription;
+      if (!signalChannelRef.current) {
+        throw new Error('Signaling channel disconnected. Cannot send offer.');
+      }
       signalChannelRef.current.send({
         type: 'broadcast',
         event: 'offer',
@@ -515,8 +535,12 @@ export const useWebRTCCall = (
       // Resend offer if no answer received after 3s (handles lost messages in unreliable Supabase Realtime)
       setTimeout(() => {
         if (peerConnection.signalingState === 'have-local-offer' && lastOfferRef.current) {
+          if (!signalChannelRef.current) {
+            console.warn('[WebRTC] Signaling channel not ready for resend');
+            return;
+          }
           console.log('[WebRTC] No answer received, resending offer');
-          signalChannelRef.current?.send({
+          signalChannelRef.current.send({
             type: 'broadcast',
             event: 'offer',
             payload: {
@@ -556,7 +580,7 @@ export const useWebRTCCall = (
   }, [initializePeerConnection, getMediaStream, userRole, userId]);
 
   // Answer call (receiver)
-  // FIX: Tracks are now added in handleOffer, so answerCall only creates the answer
+  // FIX 2: Ensure tracks are added BEFORE creating answer (mandatory for proper transceiver config)
   const answerCall = useCallback(async () => {
     try {
       setState((prev) => ({ ...prev, isAnswering: true, error: null, connectionStatus: 'connecting' }));
@@ -567,27 +591,33 @@ export const useWebRTCCall = (
         throw new Error('No incoming call to answer. Please wait for the call.');
       }
 
-      // Tracks should already be added in handleOffer
-      // But if not (e.g., media failed earlier), try to add them now
-      // Use ref to prevent duplicate tracks from async state race conditions
+      // FIX 2: CRITICAL - Ensure tracks exist before creating answer
+      // This ensures transceivers are properly configured
       if (!localStreamRef.current) {
-        console.log('[WebRTC] No local stream, getting media now');
+        console.log('[WebRTC] Getting media for answer...');
         const stream = await getMediaStream(true);
         localStreamRef.current = stream;
         setState((prev) => ({ ...prev, localStream: stream }));
         
         stream.getTracks().forEach((track) => {
-          console.log('[WebRTC] Adding track for answer:', track.kind);
+          console.log('[WebRTC] Adding track before answer:', track.kind);
           peerConnection.addTrack(track, stream);
         });
+        console.log('[WebRTC] All tracks added, now creating answer');
       }
+
+      // FIX 2: CRITICAL - Wait one frame for transceiver config to stabilize
+      await new Promise(r => requestAnimationFrame(r));
 
       // Create and send answer
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
 
       console.log('[WebRTC] Sending answer');
-      signalChannelRef.current?.send({
+      if (!signalChannelRef.current) {
+        throw new Error('Signaling channel disconnected. Cannot send answer.');
+      }
+      signalChannelRef.current.send({
         type: 'broadcast',
         event: 'answer',
         payload: {
@@ -641,11 +671,15 @@ export const useWebRTCCall = (
 
     // Send end signal if local
     if (!fromRemote && signalChannelRef.current) {
-      signalChannelRef.current.send({
-        type: 'broadcast',
-        event: 'call-end',
-        payload: { senderId: userId },
-      });
+      if (!signalChannelRef.current) {
+        console.warn('[WebRTC] Signaling channel not ready for call-end');
+      } else {
+        signalChannelRef.current.send({
+          type: 'broadcast',
+          event: 'call-end',
+          payload: { senderId: userId },
+        });
+      }
     }
 
     // Clear timeout
@@ -682,8 +716,10 @@ export const useWebRTCCall = (
 
   // Toggle audio
   // FIX 1: Use RTCRtpSender instead of MediaStream track
-  // This ensures we mute what is actually being sent, even after camera switch/reconnect
+  // FIX (PERSISTENT MUTE): Also persist state in ref for reconnects
   const toggleAudio = useCallback((enabled: boolean) => {
+    isAudioEnabledRef.current = enabled;
+
     const pc = peerConnectionRef.current;
     if (!pc) return;
 
@@ -699,8 +735,10 @@ export const useWebRTCCall = (
 
   // Toggle video
   // FIX 2: Use RTCRtpSender instead of MediaStream track
-  // This ensures we disable video what is actually being sent, even after camera switch/reconnect
+  // FIX (PERSISTENT MUTE): Also persist state in ref for reconnects
   const toggleVideo = useCallback((enabled: boolean) => {
+    isVideoEnabledRef.current = enabled;
+
     const pc = peerConnectionRef.current;
     if (!pc) return;
 
@@ -739,14 +777,12 @@ export const useWebRTCCall = (
       if (pc) {
         const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
         if (sender) {
-          // FIX 4: Preserve mute state before replacing track
-          const isVideoMuted = sender.track?.enabled === false;
-          
           await sender.replaceTrack(newVideoTrack);
           
           // FIX 4: Restore mute state on new track
-          if (isVideoMuted) {
-            newVideoTrack.enabled = false;
+          // FIX (PERSISTENT MUTE): Use ref value instead of local variable
+          newVideoTrack.enabled = isVideoEnabledRef.current;
+          if (!isVideoEnabledRef.current) {
             console.log('[WebRTC] Video mute state preserved after camera switch');
           }
         }
@@ -962,7 +998,16 @@ export const useWebRTCCall = (
           setState((prev) => ({ ...prev, error: 'Signaling connection failed' }));
           resolveChannelReadyRef.current?.();
         } else if (status === 'CLOSED') {
+          console.warn('[WebRTC] Signaling channel closed, reconnecting...');
           signalChannelRef.current = null;
+
+          // FIX 1 (HARDEN SIGNALING): Auto-reconnect after 1s
+          setTimeout(() => {
+            if (!signalChannelRef.current) {
+              console.log('[WebRTC] Attempting to reconnect signaling channel...');
+              supabase.channel(`video-call-${appointmentId}`);  // This will trigger the whole setup again
+            }
+          }, 1000);
         }
       });
 
