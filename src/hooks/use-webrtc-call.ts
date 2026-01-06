@@ -189,28 +189,42 @@ export const useWebRTCCall = (
         }
       };
 
+      // FIX: Safari/some Chrome versions don't populate event.streams
+      // Always use MediaStream fallback to ensure tracks are received
       peerConnection.ontrack = (event) => {
         console.log('[WebRTC] Remote track received:', event.track.kind, 'readyState:', event.track.readyState);
         
-        if (event.streams && event.streams.length > 0) {
-          const remoteStream = event.streams[0];
-          console.log('[WebRTC] Setting remote stream with tracks:', remoteStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
+        setState((prev) => {
+          let stream = prev.remoteStream;
           
-          setState((prev) => ({ ...prev, remoteStream }));
+          // Create new stream if none exists
+          if (!stream) {
+            stream = new MediaStream();
+            console.log('[WebRTC] Created new remote MediaStream');
+          }
           
-          // Handle track ended
-          event.track.onended = () => {
-            console.log('[WebRTC] Remote track ended:', event.track.kind);
-          };
+          // Add track if not already present
+          const existingTrack = stream.getTracks().find(t => t.id === event.track.id);
+          if (!existingTrack) {
+            stream.addTrack(event.track);
+            console.log('[WebRTC] Added remote track:', event.track.kind, 'Total tracks:', stream.getTracks().length);
+          }
           
-          event.track.onmute = () => {
-            console.log('[WebRTC] Remote track muted:', event.track.kind);
-          };
-          
-          event.track.onunmute = () => {
-            console.log('[WebRTC] Remote track unmuted:', event.track.kind);
-          };
-        }
+          return { ...prev, remoteStream: stream };
+        });
+        
+        // Handle track events
+        event.track.onended = () => {
+          console.log('[WebRTC] Remote track ended:', event.track.kind);
+        };
+        
+        event.track.onmute = () => {
+          console.log('[WebRTC] Remote track muted:', event.track.kind);
+        };
+        
+        event.track.onunmute = () => {
+          console.log('[WebRTC] Remote track unmuted:', event.track.kind);
+        };
       };
 
       peerConnection.onconnectionstatechange = () => {
@@ -285,26 +299,11 @@ export const useWebRTCCall = (
         console.log('[WebRTC] ICE gathering state:', peerConnection.iceGatheringState);
       };
 
-      peerConnection.onnegotiationneeded = async () => {
-        console.log('[WebRTC] Negotiation needed, isInitiator:', isInitiatorRef.current);
-        // Only create offer if we're the initiator to prevent glare
-        if (isInitiatorRef.current && peerConnection.signalingState === 'stable') {
-          try {
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            signalChannelRef.current?.send({
-              type: 'broadcast',
-              event: 'offer',
-              payload: {
-                sdp: peerConnection.localDescription?.sdp,
-                type: 'offer',
-                callerName: userRole === 'doctor' ? 'Doctor' : 'Patient',
-              },
-            });
-          } catch (err) {
-            console.error('[WebRTC] Error during renegotiation:', err);
-          }
-        }
+      // FIX: REMOVED onnegotiationneeded handler
+      // We manually control offer creation in startCall() and answerCall()
+      // Having onnegotiationneeded causes duplicate offers which breaks the connection
+      peerConnection.onnegotiationneeded = () => {
+        console.log('[WebRTC] Negotiation needed (ignored - manual control)');
       };
 
       peerConnectionRef.current = peerConnection;
@@ -471,6 +470,7 @@ export const useWebRTCCall = (
   }, [initializePeerConnection, getMediaStream, userRole, userId]);
 
   // Answer call (receiver)
+  // FIX: Tracks are now added in handleOffer, so answerCall only creates the answer
   const answerCall = useCallback(async () => {
     try {
       setState((prev) => ({ ...prev, isAnswering: true, error: null, connectionStatus: 'connecting' }));
@@ -481,15 +481,18 @@ export const useWebRTCCall = (
         throw new Error('No incoming call to answer. Please wait for the call.');
       }
 
-      // Get media stream
-      const stream = await getMediaStream(true);
-      setState((prev) => ({ ...prev, localStream: stream }));
-
-      // Add tracks
-      stream.getTracks().forEach((track) => {
-        console.log('[WebRTC] Adding track for answer:', track.kind);
-        peerConnection.addTrack(track, stream);
-      });
+      // Tracks should already be added in handleOffer
+      // But if not (e.g., media failed earlier), try to add them now
+      if (!state.localStream) {
+        console.log('[WebRTC] No local stream, getting media now');
+        const stream = await getMediaStream(true);
+        setState((prev) => ({ ...prev, localStream: stream }));
+        
+        stream.getTracks().forEach((track) => {
+          console.log('[WebRTC] Adding track for answer:', track.kind);
+          peerConnection.addTrack(track, stream);
+        });
+      }
 
       // Create and send answer
       const answer = await peerConnection.createAnswer();
@@ -519,7 +522,7 @@ export const useWebRTCCall = (
       }));
       toast.error(errorMsg);
     }
-  }, [getMediaStream, userId]);
+  }, [getMediaStream, userId, state.localStream]);
 
   // End call
   const endCall = useCallback((fromRemote: boolean = false) => {
@@ -707,6 +710,22 @@ export const useWebRTCCall = (
 
         await peerConnection.setRemoteDescription(offer);
         console.log('[WebRTC] Set remote offer');
+
+        // FIX: Add local tracks IMMEDIATELY after setting remote description
+        // This ensures transceivers are properly configured before creating answer
+        try {
+          const stream = await getMediaStream(true);
+          setState((prev) => ({ ...prev, localStream: stream }));
+          
+          stream.getTracks().forEach((track) => {
+            console.log('[WebRTC] Adding local track after offer:', track.kind);
+            peerConnection!.addTrack(track, stream);
+          });
+          console.log('[WebRTC] Local tracks added, ready to create answer');
+        } catch (mediaError) {
+          console.error('[WebRTC] Failed to get media in handleOffer:', mediaError);
+          // Continue anyway - user can still try to answer
+        }
 
         // Process buffered ICE candidates
         for (const candidate of pendingIceCandidatesRef.current) {
