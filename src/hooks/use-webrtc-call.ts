@@ -277,51 +277,37 @@ export const useWebRTCCall = (
 
       // FIX: Safari/some Chrome versions don't populate event.streams
       // Always use MediaStream fallback to ensure tracks are received
-      // FIX 3: Enable video tracks explicitly for mobile compatibility
       // FIX (DESKTOP CHROME): Create NEW MediaStream object (immutable) to force React re-render
       peerConnection.ontrack = (event) => {
         const track = event.track;
+
         console.log('[WebRTC] Remote track received:', {
           kind: track.kind,
           readyState: track.readyState,
-          enabled: track.enabled,
-          trackId: track.id,
+          muted: track.muted,
+          id: track.id,
         });
-        
-        // FIX 3: Enable video tracks explicitly (mobile safety)
-        if (track.kind === 'video') {
-          track.enabled = true;
-          console.log('[WebRTC] Video track enabled');
-        }
-        
+
         setState((prev) => {
-          // FIX (DESKTOP CHROME): CRITICAL - Create immutable copy
-          // Without this, React doesn't re-render because object reference doesn't change
-          const existingStream = prev.remoteStream ?? new MediaStream();
-          
-          // Add track if not already present
-          const existingTrack = existingStream.getTracks().find(t => t.id === track.id);
-          if (!existingTrack) {
-            existingStream.addTrack(track);
-            console.log('[WebRTC] Added remote track:', track.kind, 'Total tracks:', existingStream.getTracks().length);
+          const stream = prev.remoteStream ?? new MediaStream();
+
+          if (!stream.getTracks().some(t => t.id === track.id)) {
+            stream.addTrack(track);
+            console.log('[WebRTC] Added remote track:', track.kind, 'Total tracks:', stream.getTracks().length);
           }
-          
+
           // FIX (DESKTOP CHROME): Return NEW MediaStream object (forces React re-render)
           return {
             ...prev,
-            remoteStream: new MediaStream(existingStream.getTracks())
+            remoteStream: new MediaStream(stream.getTracks())
           };
         });
-        
+
         // Handle track events
-        track.onended = () => {
-          console.log('[WebRTC] Remote track ended:', track.kind);
-        };
-        
         track.onmute = () => {
           console.log('[WebRTC] Remote track muted:', track.kind);
         };
-        
+
         track.onunmute = () => {
           console.log('[WebRTC] Remote track unmuted:', track.kind);
         };
