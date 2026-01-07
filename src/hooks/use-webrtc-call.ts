@@ -178,6 +178,57 @@ export const useWebRTCCall = (
     }, 5000);
   }, []);
 
+  // Attempt ICE restart for connection recovery
+  // FIX #1: Move BEFORE initializePeerConnection so callbacks capture the right reference
+  // Check signalingState instead of isInitiator to allow callee to recover too
+  // FIX #3: Use guard ref to prevent multiple concurrent ICE restart attempts
+  const attemptIceRestart = useCallback(async (peerConnection: RTCPeerConnection) => {
+    if (iceRestartInProgressRef.current) {
+      console.log('[WebRTC] ICE restart already in progress, skipping');
+      return;
+    }
+    
+    if (peerConnection.signalingState !== 'stable') {
+      console.log('[WebRTC] Cannot restart ICE, signalingState is', peerConnection.signalingState);
+      return;
+    }
+    
+    iceRestartInProgressRef.current = true;
+
+    try {
+      console.log('[WebRTC] Attempting ICE restart...');
+      setState((prev) => ({ ...prev, connectionStatus: 'reconnecting' }));
+      
+      const offer = await peerConnection.createOffer({ iceRestart: true });
+      await peerConnection.setLocalDescription(offer);
+      lastOfferRef.current = peerConnection.localDescription;
+      
+      if (!signalChannelRef.current) {
+        console.warn('[WebRTC] Signaling channel not ready for ICE restart offer');
+        return;
+      }
+      signalChannelRef.current.send({
+        type: 'broadcast',
+        event: 'offer',
+        payload: {
+          sdp: offer.sdp,
+          type: 'offer',
+          callerName: userRole === 'doctor' ? 'Doctor' : 'Patient',
+          callerRole: userRole,
+          iceRestart: true,
+          senderId: userId,
+        },
+      });
+    } catch (error) {
+      console.error('[WebRTC] ICE restart failed:', error);
+    } finally {
+      // FIX #3: Clear guard after 5s to allow next attempt
+      setTimeout(() => {
+        iceRestartInProgressRef.current = false;
+      }, 5000);
+    }
+  }, [userRole, userId]);
+
   // Initialize peer connection
   const initializePeerConnection = useCallback(async () => {
     try {
@@ -375,56 +426,8 @@ export const useWebRTCCall = (
       setState((prev) => ({ ...prev, error: 'Failed to initialize connection' }));
       throw error;
     }
-  }, [startStatsMonitoring, userRole, getIceServers]);
+  }, [attemptIceRestart, startStatsMonitoring, userRole, getIceServers]);
 
-  // Attempt ICE restart for connection recovery
-  // Check signalingState instead of isInitiator to allow callee to recover too
-  // FIX #3: Use guard ref to prevent multiple concurrent ICE restart attempts
-  const attemptIceRestart = useCallback(async (peerConnection: RTCPeerConnection) => {
-    if (iceRestartInProgressRef.current) {
-      console.log('[WebRTC] ICE restart already in progress, skipping');
-      return;
-    }
-    
-    if (peerConnection.signalingState !== 'stable') {
-      console.log('[WebRTC] Cannot restart ICE, signalingState is', peerConnection.signalingState);
-      return;
-    }
-    
-    iceRestartInProgressRef.current = true;
-
-    try {
-      console.log('[WebRTC] Attempting ICE restart...');
-      setState((prev) => ({ ...prev, connectionStatus: 'reconnecting' }));
-      
-      const offer = await peerConnection.createOffer({ iceRestart: true });
-      await peerConnection.setLocalDescription(offer);
-      lastOfferRef.current = peerConnection.localDescription;
-      
-      if (!signalChannelRef.current) {
-        console.warn('[WebRTC] Signaling channel not ready for ICE restart offer');
-        return;
-      }
-      signalChannelRef.current.send({
-        type: 'broadcast',
-        event: 'offer',
-        payload: {
-          sdp: offer.sdp,
-          type: 'offer',
-          callerName: userRole === 'doctor' ? 'Doctor' : 'Patient',
-          iceRestart: true,
-          senderId: userId,
-        },
-      });
-    } catch (error) {
-      console.error('[WebRTC] ICE restart failed:', error);
-    } finally {
-      // FIX #3: Clear guard after 5s to allow next attempt
-      setTimeout(() => {
-        iceRestartInProgressRef.current = false;
-      }, 5000);
-    }
-  }, [userRole, userId]);
 
   // Get media stream with fallback
   const getMediaStream = useCallback(async (videoEnabled: boolean = true): Promise<MediaStream> => {
@@ -534,6 +537,7 @@ export const useWebRTCCall = (
           sdp: peerConnection.localDescription?.sdp,
           type: 'offer',
           callerName: userRole === 'doctor' ? 'Doctor' : 'Patient',
+          callerRole: userRole,
           senderId: userId,
         },
       });
@@ -553,23 +557,26 @@ export const useWebRTCCall = (
               sdp: lastOfferRef.current.sdp,
               type: 'offer',
               callerName: userRole === 'doctor' ? 'Doctor' : 'Patient',
+              callerRole: userRole,
               senderId: userId,
             },
           });
         }
       }, 3000);
 
-      // Set timeout for answer
+      // Set timeout for answer (60s to account for poor networks)
+      // FIX #4 (STUCK CALL): Increased from 45s to 60s, added logging
       if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
       callTimeoutRef.current = setTimeout(() => {
         setState((prev) => {
           if (prev.isCalling && !prev.isCallActive) {
+            console.warn('[WebRTC] Call timeout - no connection established within 60s');
             toast.error('Call not answered. The other person may not have the call dialog open.');
             return { ...prev, isCalling: false, error: 'Call not answered', connectionStatus: 'idle' };
           }
           return prev;
         });
-      }, 45000);
+      }, 60000);
 
       toast.success('Calling...');
     } catch (error) {
@@ -820,13 +827,15 @@ export const useWebRTCCall = (
 
   // Setup signaling channel
   useEffect(() => {
-    const channel = supabase.channel(`video-call-${appointmentId}`);
+    // FIX #1 (RECONNECTION): Wrap channel setup so it can be re-called on CLOSED
+    const setupChannel = () => {
+      const channel = supabase.channel(`video-call-${appointmentId}`);
 
-    channelReadyRef.current = new Promise<void>((resolve) => {
-      resolveChannelReadyRef.current = resolve;
-    });
+      channelReadyRef.current = new Promise<void>((resolve) => {
+        resolveChannelReadyRef.current = resolve;
+      });
 
-    const handleOffer = async (payload: any) => {
+      const handleOffer = async (payload: any) => {
       const offerPayload = payload.payload;
       
       // Ignore our own messages
@@ -843,15 +852,18 @@ export const useWebRTCCall = (
         
         if (peerConnection && peerConnection.signalingState === 'have-local-offer') {
           // Glare condition: both sides sent offers
-          // Use polite peer logic: higher userId yields (rolls back)
-          const shouldYield = userId > offerPayload.senderId;
+          // FIX #4 (GLARE): Use role-based tie-breaking instead of UUID comparison
+          // Doctor is "impolite" (takes priority), Patient is "polite" (yields)
+          const isDoctor = userRole === 'doctor';
+          const remoteIsDoctor = offerPayload.callerRole === 'doctor';
+          const shouldYield = !isDoctor && remoteIsDoctor;
           
           if (shouldYield) {
-            console.log('[WebRTC] Glare detected, yielding (rolling back)');
+            console.log('[WebRTC] Glare detected, patient yielding (rolling back)');
             await peerConnection.setLocalDescription({ type: 'rollback' });
             isInitiatorRef.current = false;
           } else {
-            console.log('[WebRTC] Glare detected, ignoring remote offer (we take priority)');
+            console.log('[WebRTC] Glare detected, doctor takes priority (ignoring remote offer)');
             return;
           }
         }
@@ -887,7 +899,21 @@ export const useWebRTCCall = (
           }
         } catch (mediaError) {
           console.error('[WebRTC] Failed to get media in handleOffer:', mediaError);
-          // Continue anyway - user can still try to answer
+          // FIX #2: Notify caller that we cannot answer due to media unavailable
+          // This prevents caller from waiting indefinitely
+          const mediaErrorMsg = mediaError instanceof Error ? mediaError.message : 'Device error';
+          toast.error(`Cannot answer call: ${mediaErrorMsg}`);
+          if (signalChannelRef.current) {
+            signalChannelRef.current.send({
+              type: 'broadcast',
+              event: 'call-end',
+              payload: { 
+                senderId: userId,
+                reason: 'media-unavailable',
+              },
+            });
+          }
+          return;
         }
 
         // Process buffered ICE candidates
@@ -1004,23 +1030,34 @@ export const useWebRTCCall = (
           setState((prev) => ({ ...prev, error: 'Signaling connection failed' }));
           resolveChannelReadyRef.current?.();
         } else if (status === 'CLOSED') {
-          console.warn('[WebRTC] Signaling channel closed, reconnecting...');
+          console.warn('[WebRTC] Signaling channel closed');
           signalChannelRef.current = null;
-
-          // FIX 1 (HARDEN SIGNALING): Auto-reconnect after 1s
-          setTimeout(() => {
-            if (!signalChannelRef.current) {
-              console.log('[WebRTC] Attempting to reconnect signaling channel...');
-              supabase.channel(`video-call-${appointmentId}`);  // This will trigger the whole setup again
-            }
-          }, 1000);
+          setState((prev) => ({ ...prev, error: 'Signaling disconnected' }));
+          // FIX #1 (RECONNECTION): Let useEffect re-run or manual recovery later
+          // Don't try to recreate channel here - just mark ref as null
         }
       });
+
+      return channel;
+    };
+
+    // FIX #1 (RECONNECTION): Call setupChannel to initialize with all handlers
+    let channel = setupChannel();
 
     return () => {
       console.log('[WebRTC] Cleaning up channel');
       supabase.removeChannel(channel);
       signalChannelRef.current = null;
+      
+      // FIX #5 (CLEANUP): Properly close peer connection and stop tracks
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
+      }
     };
   }, [appointmentId, userId, initializePeerConnection, endCall]);
 
