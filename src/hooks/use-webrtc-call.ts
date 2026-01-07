@@ -104,6 +104,8 @@ export const useWebRTCCall = (
   // FIX (PERSISTENT MUTE): Track audio/video mute state across reconnects/replaceTrack
   const isAudioEnabledRef = useRef<boolean>(true);
   const isVideoEnabledRef = useRef<boolean>(true);
+  // FIX: Prevent React StrictMode double-subscription
+  const channelInitializedRef = useRef<boolean>(false);
 
   // Build ICE servers configuration
   // FIX #1: Reorder for mobile networks (Indian ISPs block UDP/STUN)
@@ -806,6 +808,14 @@ export const useWebRTCCall = (
 
   // Setup signaling channel
   useEffect(() => {
+    // FIX: Prevent React StrictMode double-subscription
+    // In dev mode, useEffect runs twice; this guard prevents channel cleanup mid-call
+    if (channelInitializedRef.current) {
+      console.log('[WebRTC] Channel already initialized, skipping');
+      return;
+    }
+    channelInitializedRef.current = true;
+
     // FIX #1 (RECONNECTION): Wrap channel setup so it can be re-called on CLOSED
     const setupChannel = () => {
       const channel = supabase.channel(`video-call-${appointmentId}`);
@@ -999,6 +1009,12 @@ export const useWebRTCCall = (
         const candidatePayload = payload.payload;
         if (!candidatePayload.candidate) return;
 
+        // FIX: Ignore our own ICE candidates (critical for stability)
+        if (candidatePayload.senderId === userId) {
+          console.log('[WebRTC] Ignoring own ICE candidate');
+          return;
+        }
+
         const candidate = new RTCIceCandidate({
           candidate: candidatePayload.candidate,
           sdpMLineIndex: candidatePayload.sdpMLineIndex,
@@ -1041,10 +1057,14 @@ export const useWebRTCCall = (
           resolveChannelReadyRef.current?.();
         } else if (status === 'CLOSED') {
           console.warn('[WebRTC] Signaling channel closed');
+          // FIX: DO NOT end call on signaling close
+          // WebRTC can survive signaling loss once connected
           signalChannelRef.current = null;
-          setState((prev) => ({ ...prev, error: 'Signaling disconnected' }));
-          // FIX #1 (RECONNECTION): Let useEffect re-run or manual recovery later
-          // Don't try to recreate channel here - just mark ref as null
+          setState((prev) => ({
+            ...prev,
+            // Only reset to idle if not already in an active call
+            connectionStatus: prev.isCallActive ? prev.connectionStatus : 'idle',
+          }));
         }
       });
 
@@ -1055,19 +1075,19 @@ export const useWebRTCCall = (
     let channel = setupChannel();
 
     return () => {
-      console.log('[WebRTC] Cleaning up channel');
-      supabase.removeChannel(channel);
-      signalChannelRef.current = null;
+      console.log('[WebRTC] Cleaning up channel (unmount only)');
       
-      // FIX #5 (CLEANUP): Properly close peer connection and stop tracks
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
+      // Only remove channel on actual component unmount
+      if (signalChannelRef.current) {
+        supabase.removeChannel(signalChannelRef.current);
+        signalChannelRef.current = null;
       }
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(t => t.stop());
-        localStreamRef.current = null;
-      }
+      
+      // Reset flag for next mount
+      channelInitializedRef.current = false;
+      
+      // FIX: DO NOT close PC or stop tracks here
+      // Let endCall() handle that when user explicitly ends or remote ends
     };
   }, [appointmentId, userId, initializePeerConnection, endCall]);
 
