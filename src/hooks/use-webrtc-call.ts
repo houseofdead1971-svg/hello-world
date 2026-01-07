@@ -265,6 +265,7 @@ export const useWebRTCCall = (
               sdpMLineIndex: event.candidate.sdpMLineIndex,
               sdpMid: event.candidate.sdpMid,
               usernameFragment: event.candidate.usernameFragment,
+              senderId: userId,
             },
           });
         } else {
@@ -541,28 +542,6 @@ export const useWebRTCCall = (
           senderId: userId,
         },
       });
-
-      // Resend offer if no answer received after 3s (handles lost messages in unreliable Supabase Realtime)
-      setTimeout(() => {
-        if (peerConnection.signalingState === 'have-local-offer' && lastOfferRef.current) {
-          if (!signalChannelRef.current) {
-            console.warn('[WebRTC] Signaling channel not ready for resend');
-            return;
-          }
-          console.log('[WebRTC] No answer received, resending offer');
-          signalChannelRef.current.send({
-            type: 'broadcast',
-            event: 'offer',
-            payload: {
-              sdp: lastOfferRef.current.sdp,
-              type: 'offer',
-              callerName: userRole === 'doctor' ? 'Doctor' : 'Patient',
-              callerRole: userRole,
-              senderId: userId,
-            },
-          });
-        }
-      }, 3000);
 
       // Set timeout for answer (60s to account for poor networks)
       // FIX #4 (STUCK CALL): Increased from 45s to 60s, added logging
@@ -869,7 +848,7 @@ export const useWebRTCCall = (
         }
 
         // Create new peer connection if needed
-        if (!peerConnection || peerConnection.signalingState === 'closed') {
+        if (!peerConnection) {
           peerConnection = await initializePeerConnection();
         }
 
@@ -926,14 +905,45 @@ export const useWebRTCCall = (
         }
         pendingIceCandidatesRef.current = [];
 
-        // Show incoming call notification
-        setState((prev) => ({
-          ...prev,
-          isAnswering: true,
-          incomingCall: true,
-          callerName: offerPayload.callerName || 'Caller',
-          connectionStatus: 'connecting',
-        }));
+        // FIX: AUTO-ANSWER immediately for reliability (esp. mobile/Safari)
+        // This ensures answer is created promptly after receiving offer
+        try {
+          await new Promise(r => requestAnimationFrame(r));
+
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+
+          console.log('[WebRTC] Auto-answering call');
+          if (!signalChannelRef.current) {
+            console.warn('[WebRTC] Signaling channel not ready for auto-answer');
+            return;
+          }
+          signalChannelRef.current.send({
+            type: 'broadcast',
+            event: 'answer',
+            payload: {
+              sdp: answer.sdp,
+              type: 'answer',
+              senderId: userId,
+            },
+          });
+
+          setState((prev) => ({
+            ...prev,
+            incomingCall: false,
+            isAnswering: false,
+          }));
+        } catch (answerError) {
+          console.error('[WebRTC] Failed to auto-answer:', answerError);
+          // Show incoming call UI if auto-answer fails, let user try manual answer
+          setState((prev) => ({
+            ...prev,
+            isAnswering: true,
+            incomingCall: true,
+            callerName: offerPayload.callerName || 'Caller',
+            connectionStatus: 'connecting',
+          }));
+        }
       } catch (error) {
         console.error('[WebRTC] Error handling offer:', error);
         toast.error('Failed to receive call');
