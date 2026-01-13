@@ -107,35 +107,57 @@ export const useWebRTCCall = (
   // FIX: Prevent React StrictMode double-subscription
   const channelInitializedRef = useRef<boolean>(false);
 
-  // Build ICE servers configuration
-  // Dynamically fetch TURN credentials from Cloudflare via edge function
+  // Build ICE servers configuration with reliable TURN fallback
   const getIceServers = useCallback(async (): Promise<RTCConfiguration> => {
+    // Reliable free TURN servers (Metered.ca) as fallback
+    const fallbackTurnServers = [
+      {
+        urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+        username: '4bdffd141bb6237f2674daa3',
+        credential: 'h1EeHiZKRDlKxaGr',
+      },
+      {
+        urls: 'turn:global.relay.metered.ca:443?transport=tcp',
+        username: '4bdffd141bb6237f2674daa3',
+        credential: 'h1EeHiZKRDlKxaGr',
+      },
+      {
+        urls: 'turn:global.relay.metered.ca:80?transport=udp',
+        username: '4bdffd141bb6237f2674daa3',
+        credential: 'h1EeHiZKRDlKxaGr',
+      },
+    ];
+
     try {
       console.log('[WebRTC] Fetching TURN credentials from edge function...');
       const { data, error } = await supabase.functions.invoke('turn');
       
       if (error || !data) {
-        console.warn('[WebRTC] Failed to fetch TURN credentials, using fallback:', error);
-        // Fallback to STUN only
+        console.warn('[WebRTC] TURN fetch failed, using Metered.ca fallback:', error);
         return {
-          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          iceServers: [
+            ...fallbackTurnServers,
+            { urls: 'stun:stun.l.google.com:19302' },
+          ],
           iceCandidatePoolSize: 10,
           bundlePolicy: 'max-bundle',
           rtcpMuxPolicy: 'require',
         };
       }
 
-      console.log('[WebRTC] Got TURN credentials:', data.urls);
+      console.log('[WebRTC] Got Cloudflare TURN credentials');
       
       return {
         iceServers: [
-          // Cloudflare TURN servers (highest priority)
+          // Cloudflare TURN (primary)
           {
             urls: data.urls,
             username: data.username,
             credential: data.credential,
           },
-          // STUN fallback
+          // Metered.ca TURN (fallback)
+          ...fallbackTurnServers,
+          // STUN (last resort)
           { urls: 'stun:stun.l.google.com:19302' },
         ],
         iceCandidatePoolSize: 10,
@@ -145,7 +167,10 @@ export const useWebRTCCall = (
     } catch (err) {
       console.error('[WebRTC] Error fetching TURN credentials:', err);
       return {
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        iceServers: [
+          ...fallbackTurnServers,
+          { urls: 'stun:stun.l.google.com:19302' },
+        ],
         iceCandidatePoolSize: 10,
         bundlePolicy: 'max-bundle',
         rtcpMuxPolicy: 'require',
