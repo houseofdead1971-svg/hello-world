@@ -173,13 +173,13 @@ export const VideoChat = ({
 
   return (
     <div className={cn(
-      "w-full h-full flex flex-col gap-4 p-4 min-h-0",
+      "w-full h-full flex flex-col lg:flex-row gap-4 p-4 min-h-0",
       isFullscreen && "fixed inset-0 z-50 bg-black p-0"
     )}>
-      {/* Video Container */}
+      {/* Video Container - Takes more space on laptop */}
       <div className={cn(
-        "flex-1 relative bg-black rounded-lg overflow-hidden min-h-[200px] sm:min-h-[300px]",
-        isFullscreen && "rounded-none min-h-full"
+        "flex-1 relative bg-black rounded-xl overflow-hidden min-h-[200px] sm:min-h-[300px] lg:min-h-[400px] lg:flex-[2]",
+        isFullscreen && "rounded-none min-h-full w-full"
       )}>
         {/* Remote Video */}
         {remoteStream ? (
@@ -198,28 +198,28 @@ export const VideoChat = ({
             }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 px-4">
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4">
             <div className="text-center">
-              <div className="text-3xl sm:text-4xl mb-2 sm:mb-4">📞</div>
-              <p className="text-white mb-1 sm:mb-2 text-sm sm:text-base">
+              <div className="text-4xl sm:text-5xl lg:text-6xl mb-3 sm:mb-4">📞</div>
+              <p className="text-white mb-1 sm:mb-2 text-sm sm:text-base lg:text-lg font-medium">
                 {connectionStatus === 'connecting' && 'Connecting...'}
                 {connectionStatus === 'reconnecting' && 'Reconnecting...'}
                 {isCalling && connectionStatus !== 'connecting' && 'Calling...'}
                 {isAnswering && connectionStatus !== 'connecting' && 'Ready to answer'}
                 {connectionStatus === 'idle' && !isCalling && !isAnswering && 'Waiting for connection'}
               </p>
-              <p className="text-xs sm:text-sm text-gray-400 truncate max-w-xs">{doctorName}</p>
+              <p className="text-sm lg:text-base text-gray-400 truncate max-w-xs lg:max-w-md">{doctorName}</p>
             </div>
           </div>
         )}
 
-        {/* Local Video - Picture in Picture */}
+        {/* Local Video - Picture in Picture - Larger on laptop */}
         <div
           className={cn(
-            'absolute rounded-lg overflow-hidden border-2 border-primary cursor-pointer transition-all hover:scale-105',
+            'absolute rounded-lg overflow-hidden border-2 border-primary shadow-xl cursor-pointer transition-all hover:scale-105 hover:border-primary/80',
             expandRemote
-              ? 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-20 h-16 sm:w-32 sm:h-24'
-              : 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-24 h-20 sm:w-48 sm:h-36'
+              ? 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-20 h-16 sm:w-32 sm:h-24 lg:w-40 lg:h-32'
+              : 'bottom-2 right-2 sm:bottom-4 sm:right-4 w-24 h-20 sm:w-48 sm:h-36 lg:w-64 lg:h-48'
           )}
           onClick={() => setExpandRemote(!expandRemote)}
         >
@@ -233,51 +233,52 @@ export const VideoChat = ({
             />
           ) : (
             <div className="w-full h-full bg-slate-700 flex items-center justify-center">
-              <span className="text-xs text-gray-400">Camera off</span>
+              <span className="text-xs lg:text-sm text-gray-400">Camera off</span>
             </div>
           )}
         </div>
 
-        {/* Connection Status Badge */}
+        {/* Connection Status Badge - Better positioned for laptop */}
         {statusDisplay && (
           <div className={cn(
-            "absolute top-2 left-2 sm:top-4 sm:left-4 text-white px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-semibold flex items-center gap-1",
+            "absolute top-2 left-2 sm:top-4 sm:left-4 lg:top-6 lg:left-6 text-white px-2 py-1 sm:px-3 sm:py-1.5 lg:px-4 lg:py-2 rounded-full text-xs sm:text-sm lg:text-base font-semibold flex items-center gap-1.5 shadow-lg",
             statusDisplay.color,
             statusDisplay.animate && "animate-pulse"
           )}>
-            {connectionStatus === 'connected' && <Wifi className="h-3 w-3" />}
-            {connectionStatus === 'failed' && <WifiOff className="h-3 w-3" />}
+            {connectionStatus === 'connected' && <Wifi className="h-3 w-3 lg:h-4 lg:w-4" />}
+            {connectionStatus === 'failed' && <WifiOff className="h-3 w-3 lg:h-4 lg:w-4" />}
             {statusDisplay.text}
           </div>
         )}
 
         {/* Network Quality Indicator */}
         {isCallActive && networkQuality === 'poor' && (
-          <div className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-orange-500/80 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1">
+          <div className="absolute top-12 left-2 sm:top-14 sm:left-4 lg:top-16 lg:left-6 bg-orange-500/90 text-white px-2 py-1 lg:px-3 lg:py-1.5 rounded-full text-xs lg:text-sm flex items-center gap-1 shadow-lg">
             <WifiOff className="h-3 w-3" />
             Poor Network
           </div>
         )}
 
-        {/* Fullscreen Toggle */}
+        {/* Fullscreen Toggle - Better positioning */}
         {isCallActive && (
           <Button
             variant="ghost"
             size="icon"
-            className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/50 hover:bg-black/70 text-white"
+            className="absolute top-2 right-2 sm:top-4 sm:right-4 lg:top-6 lg:right-6 bg-black/60 hover:bg-black/80 text-white h-8 w-8 lg:h-10 lg:w-10"
             onClick={toggleFullscreen}
           >
-            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {isFullscreen ? <Minimize2 className="h-4 w-4 lg:h-5 lg:w-5" /> : <Maximize2 className="h-4 w-4 lg:h-5 lg:w-5" />}
           </Button>
         )}
       </div>
 
-      {/* Controls */}
+      {/* Controls - Side panel on laptop, bottom on mobile */}
       <Card className={cn(
-        "bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col max-h-[40vh] sm:max-h-[35vh] overflow-hidden",
-        isFullscreen && "absolute bottom-4 left-4 right-4 max-h-[30vh]"
+        "bg-gradient-to-r from-card to-card/50 border-primary/20 flex-shrink-0 flex flex-col overflow-hidden",
+        "max-h-[40vh] sm:max-h-[35vh] lg:max-h-none lg:flex-1 lg:min-w-[320px] lg:max-w-[380px]",
+        isFullscreen && "absolute bottom-4 left-4 right-4 max-h-[30vh] lg:max-h-[30vh]"
       )}>
-        <CardContent className="pt-4 sm:pt-6 overflow-y-auto flex-1">
+        <CardContent className="pt-4 sm:pt-6 lg:pt-8 overflow-y-auto flex-1">
           {!isCallActive && !isCalling && !isAnswering ? (
             // Pre-Call State
             <div className="space-y-3 sm:space-y-4">
@@ -403,25 +404,25 @@ export const VideoChat = ({
                 </p>
               </div>
 
-              {/* Media Controls */}
-              <div className="flex gap-1 sm:gap-2 justify-center flex-wrap">
+              {/* Media Controls - Grid layout on laptop */}
+              <div className="flex gap-2 sm:gap-3 justify-center flex-wrap lg:grid lg:grid-cols-2 lg:gap-3">
                 <Button
                   onClick={handleToggleAudio}
                   variant={audioEnabled ? 'default' : 'destructive'}
-                  size="sm"
-                  className="gap-1 text-xs sm:text-sm flex-1 min-w-[70px]"
+                  size="default"
+                  className="gap-2 text-xs sm:text-sm lg:text-base flex-1 min-w-[70px] lg:min-w-0 h-10 lg:h-12"
                 >
-                  {audioEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                  {audioEnabled ? <Mic className="h-4 w-4 lg:h-5 lg:w-5" /> : <MicOff className="h-4 w-4 lg:h-5 lg:w-5" />}
                   <span className="hidden sm:inline">{audioEnabled ? 'Mute' : 'Unmute'}</span>
                 </Button>
 
                 <Button
                   onClick={handleToggleVideo}
                   variant={videoEnabled ? 'default' : 'destructive'}
-                  size="sm"
-                  className="gap-1 text-xs sm:text-sm flex-1 min-w-[70px]"
+                  size="default"
+                  className="gap-2 text-xs sm:text-sm lg:text-base flex-1 min-w-[70px] lg:min-w-0 h-10 lg:h-12"
                 >
-                  {videoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                  {videoEnabled ? <Video className="h-4 w-4 lg:h-5 lg:w-5" /> : <VideoOff className="h-4 w-4 lg:h-5 lg:w-5" />}
                   <span className="hidden sm:inline">{videoEnabled ? 'Stop' : 'Start'}</span>
                 </Button>
 
@@ -429,10 +430,10 @@ export const VideoChat = ({
                   <Button
                     onClick={onSwitchCamera}
                     variant="outline"
-                    size="sm"
-                    className="gap-1 text-xs sm:text-sm"
+                    size="default"
+                    className="gap-2 text-xs sm:text-sm lg:text-base h-10 lg:h-12"
                   >
-                    <SwitchCamera className="h-4 w-4" />
+                    <SwitchCamera className="h-4 w-4 lg:h-5 lg:w-5" />
                     <span className="hidden sm:inline">Switch</span>
                   </Button>
                 )}
@@ -440,11 +441,14 @@ export const VideoChat = ({
                 <Button
                   onClick={onEndCall}
                   variant="destructive"
-                  size="sm"
-                  className="gap-1 text-xs sm:text-sm flex-1 min-w-[70px]"
+                  size="default"
+                  className={cn(
+                    "gap-2 text-xs sm:text-sm lg:text-base flex-1 min-w-[70px] lg:min-w-0 h-10 lg:h-12",
+                    hasMultipleCameras && onSwitchCamera ? "" : "lg:col-span-2"
+                  )}
                 >
-                  <PhoneOff className="h-4 w-4" />
-                  <span className="hidden sm:inline">End</span>
+                  <PhoneOff className="h-4 w-4 lg:h-5 lg:w-5" />
+                  <span className="hidden sm:inline">End Call</span>
                 </Button>
               </div>
 
