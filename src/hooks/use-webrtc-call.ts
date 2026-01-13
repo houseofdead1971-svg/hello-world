@@ -108,39 +108,49 @@ export const useWebRTCCall = (
   const channelInitializedRef = useRef<boolean>(false);
 
   // Build ICE servers configuration
-  // FIX #1: Reorder for mobile networks (Indian ISPs block UDP/STUN)
-  // Priority: TURNS TCP > TURN TCP > TURN UDP > STUN
+  // Dynamically fetch TURN credentials from Cloudflare via edge function
   const getIceServers = useCallback(async (): Promise<RTCConfiguration> => {
-    return {
-      iceServers: [
-        // 🔒 TURN TLS FIRST (most reliable, works on almost all networks)
-        {
-          urls: "turns:global.relay.metered.ca:443?transport=tcp",
-          username: "4bdffd141bb6237f2674daa3",
-          credential: "h1EeHiZKRDlKxaGr",
-        },
+    try {
+      console.log('[WebRTC] Fetching TURN credentials from edge function...');
+      const { data, error } = await supabase.functions.invoke('turn');
+      
+      if (error || !data) {
+        console.warn('[WebRTC] Failed to fetch TURN credentials, using fallback:', error);
+        // Fallback to STUN only
+        return {
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          iceCandidatePoolSize: 10,
+          bundlePolicy: 'max-bundle',
+          rtcpMuxPolicy: 'require',
+        };
+      }
 
-        // TURN TCP fallback
-        {
-          urls: "turn:global.relay.metered.ca:443?transport=tcp",
-          username: "4bdffd141bb6237f2674daa3",
-          credential: "h1EeHiZKRDlKxaGr",
-        },
-
-        // TURN UDP LAST (only if network allows)
-        {
-          urls: "turn:global.relay.metered.ca:80?transport=udp",
-          username: "4bdffd141bb6237f2674daa3",
-          credential: "h1EeHiZKRDlKxaGr",
-        },
-
-        // STUN ABSOLUTE LAST (optional)
-        { urls: "stun:stun.l.google.com:19302" },
-      ],
-      iceCandidatePoolSize: 10,
-      bundlePolicy: "max-bundle",
-      rtcpMuxPolicy: "require",
-    };
+      console.log('[WebRTC] Got TURN credentials:', data.urls);
+      
+      return {
+        iceServers: [
+          // Cloudflare TURN servers (highest priority)
+          {
+            urls: data.urls,
+            username: data.username,
+            credential: data.credential,
+          },
+          // STUN fallback
+          { urls: 'stun:stun.l.google.com:19302' },
+        ],
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+      };
+    } catch (err) {
+      console.error('[WebRTC] Error fetching TURN credentials:', err);
+      return {
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+      };
+    }
   }, []);
 
   // Monitor network quality using WebRTC stats
@@ -1075,7 +1085,8 @@ export const useWebRTCCall = (
       // FIX: DO NOT close PC or stop tracks here
       // Let endCall() handle that when user explicitly ends or remote ends
     };
-  }, [appointmentId, userId, initializePeerConnection, endCall]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointmentId, userId]);
 
   return [
     state,
