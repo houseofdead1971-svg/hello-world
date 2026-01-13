@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Users, Calendar, FileText, Search, Menu, X, TestTube } from "lucide-react";
+import { Activity, Users, Calendar, FileText, Search, Menu, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
@@ -12,7 +12,6 @@ import Notifications from "@/components/dashboard/Notifications";
 import { AppointmentManagement } from "@/components/dashboard/AppointmentManagement";
 import { DoctorAppointmentHistory } from "@/components/dashboard/DoctorAppointmentHistory";
 import { PatientDetailsDialog } from "@/components/dashboard/PatientDetailsDialog";
-import { BloodReportAnalysis } from "@/components/dashboard/BloodReportAnalysis";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -667,7 +666,6 @@ const DoctorDashboard = ({ showChat = false }: DoctorDashboardProps) => {
   const navLinks = [
     { id: "patients", label: "My Patients" },
     { id: "appointments", label: "Appointments" },
-    { id: "reports", label: "Blood Reports" },
     { id: "history", label: "History" },
   ];
 
@@ -927,21 +925,6 @@ const DoctorDashboard = ({ showChat = false }: DoctorDashboardProps) => {
 
             <TabsContent value="appointments">
               <AppointmentManagement doctorId={user?.id || ""} />
-            </TabsContent>
-
-            <TabsContent value="reports">
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10">
-                    <TestTube className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Blood Report Analysis</h3>
-                    <p className="text-sm text-muted-foreground">AI-powered analysis of blood test reports</p>
-                  </div>
-                </div>
-                <BloodReportAnalysis userId={user?.id || ""} />
-              </div>
             </TabsContent>
 
             <TabsContent value="history">
