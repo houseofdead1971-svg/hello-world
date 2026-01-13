@@ -897,20 +897,46 @@ export const useWebRTCCall = (
         await peerConnection.setRemoteDescription(offer);
         console.log('[WebRTC] Set remote offer');
 
-        // FIX: For answerer, simply use addTrack - transceivers come from offer SDP
-        // The offer already contains transceiver info, addTrack will reuse them
+        // FIX: For answerer, use replaceTrack on transceivers from offer SDP
+        // This ensures audio/video tracks are properly sent to the caller
         try {
           if (!localStreamRef.current) {
             const stream = await getMediaStream(true);
             localStreamRef.current = stream;
             setState((prev) => ({ ...prev, localStream: stream }));
             
-            // Simply add tracks - they'll be matched to existing transceivers from offer
-            stream.getTracks().forEach((track) => {
-              console.log('[WebRTC] Adding local track to answer:', track.kind);
-              peerConnection!.addTrack(track, stream);
-            });
-            console.log('[WebRTC] Local tracks added, ready to create answer');
+            const audioTrack = stream.getAudioTracks()[0];
+            const videoTrack = stream.getVideoTracks()[0];
+            
+            // Get transceivers created from offer and replace tracks
+            const transceivers = peerConnection.getTransceivers();
+            console.log('[WebRTC] Answerer transceivers:', transceivers.length);
+            
+            for (const transceiver of transceivers) {
+              const kind = transceiver.receiver?.track?.kind;
+              if (kind === 'audio' && audioTrack) {
+                await transceiver.sender.replaceTrack(audioTrack);
+                console.log('[WebRTC] Replaced audio track on transceiver');
+              } else if (kind === 'video' && videoTrack) {
+                await transceiver.sender.replaceTrack(videoTrack);
+                console.log('[WebRTC] Replaced video track on transceiver');
+              }
+            }
+            
+            // Fallback: If transceivers don't have tracks, use addTrack
+            const hasAudioSender = transceivers.some(t => t.sender.track?.kind === 'audio');
+            const hasVideoSender = transceivers.some(t => t.sender.track?.kind === 'video');
+            
+            if (!hasAudioSender && audioTrack) {
+              peerConnection.addTrack(audioTrack, stream);
+              console.log('[WebRTC] Added audio track via addTrack fallback');
+            }
+            if (!hasVideoSender && videoTrack) {
+              peerConnection.addTrack(videoTrack, stream);
+              console.log('[WebRTC] Added video track via addTrack fallback');
+            }
+            
+            console.log('[WebRTC] Answerer tracks configured');
           } else {
             console.log('[WebRTC] Local tracks already added in handleOffer');
           }
