@@ -278,9 +278,13 @@ export const useWebRTCCall = (
       // For ANSWERER, transceivers come from the remote offer SDP
       // Adding transceivers for answerer causes duplicate/mismatched transceivers
       if (forInitiator) {
-        peerConnection.addTransceiver('video', { direction: 'sendrecv' });
-        peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-        console.log('[WebRTC] Added transceivers for initiator');
+        // Create transceivers with explicit sendrecv direction for bidirectional audio/video
+        const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+        const audioTransceiver = peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+        console.log('[WebRTC] Added transceivers for initiator:', {
+          video: videoTransceiver.direction,
+          audio: audioTransceiver.direction
+        });
       } else {
         console.log('[WebRTC] Skipping transceiver creation for answerer (will use offer transceivers)');
       }
@@ -912,31 +916,39 @@ export const useWebRTCCall = (
             const transceivers = peerConnection.getTransceivers();
             console.log('[WebRTC] Answerer transceivers:', transceivers.length);
             
+            let audioReplaced = false;
+            let videoReplaced = false;
+            
             for (const transceiver of transceivers) {
+              // Ensure transceiver direction allows sending
+              if (transceiver.direction === 'recvonly') {
+                transceiver.direction = 'sendrecv';
+                console.log('[WebRTC] Changed transceiver direction to sendrecv');
+              }
+              
               const kind = transceiver.receiver?.track?.kind;
-              if (kind === 'audio' && audioTrack) {
+              if (kind === 'audio' && audioTrack && !audioReplaced) {
                 await transceiver.sender.replaceTrack(audioTrack);
+                audioReplaced = true;
                 console.log('[WebRTC] Replaced audio track on transceiver');
-              } else if (kind === 'video' && videoTrack) {
+              } else if (kind === 'video' && videoTrack && !videoReplaced) {
                 await transceiver.sender.replaceTrack(videoTrack);
+                videoReplaced = true;
                 console.log('[WebRTC] Replaced video track on transceiver');
               }
             }
             
-            // Fallback: If transceivers don't have tracks, use addTrack
-            const hasAudioSender = transceivers.some(t => t.sender.track?.kind === 'audio');
-            const hasVideoSender = transceivers.some(t => t.sender.track?.kind === 'video');
-            
-            if (!hasAudioSender && audioTrack) {
+            // Fallback: If transceivers didn't have matching tracks, use addTrack
+            if (!audioReplaced && audioTrack) {
               peerConnection.addTrack(audioTrack, stream);
               console.log('[WebRTC] Added audio track via addTrack fallback');
             }
-            if (!hasVideoSender && videoTrack) {
+            if (!videoReplaced && videoTrack) {
               peerConnection.addTrack(videoTrack, stream);
               console.log('[WebRTC] Added video track via addTrack fallback');
             }
             
-            console.log('[WebRTC] Answerer tracks configured');
+            console.log('[WebRTC] Answerer tracks configured:', { audioReplaced, videoReplaced });
           } else {
             console.log('[WebRTC] Local tracks already added in handleOffer');
           }
