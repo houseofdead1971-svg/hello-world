@@ -616,19 +616,30 @@ export const useWebRTCCall = (
         throw new Error('No incoming call to answer. Please wait for the call.');
       }
 
-      // FIX 2: CRITICAL - Ensure tracks exist before creating answer
-      // This ensures transceivers are properly configured
+      // FIX: Tracks should already be added in handleOffer via replaceTrack
+      // If not, add them now using replaceTrack on existing transceivers
       if (!localStreamRef.current) {
         console.log('[WebRTC] Getting media for answer...');
         const stream = await getMediaStream(true);
         localStreamRef.current = stream;
         setState((prev) => ({ ...prev, localStream: stream }));
         
-        stream.getTracks().forEach((track) => {
-          console.log('[WebRTC] Adding track before answer:', track.kind);
-          peerConnection.addTrack(track, stream);
-        });
-        console.log('[WebRTC] All tracks added, now creating answer');
+        const audioTrack = stream.getAudioTracks()[0];
+        const videoTrack = stream.getVideoTracks()[0];
+        
+        // Use replaceTrack on existing transceivers from offer
+        const transceivers = peerConnection.getTransceivers();
+        for (const transceiver of transceivers) {
+          const senderTrackKind = transceiver.sender.track?.kind || transceiver.mid;
+          if ((senderTrackKind === 'audio' || transceiver.mid?.includes('audio') || transceiver.mid === '0') && audioTrack && !transceiver.sender.track) {
+            await transceiver.sender.replaceTrack(audioTrack);
+            console.log('[WebRTC] Replaced audio track in answerCall');
+          } else if ((senderTrackKind === 'video' || transceiver.mid?.includes('video') || transceiver.mid === '1') && videoTrack && !transceiver.sender.track) {
+            await transceiver.sender.replaceTrack(videoTrack);
+            console.log('[WebRTC] Replaced video track in answerCall');
+          }
+        }
+        console.log('[WebRTC] All tracks configured via replaceTrack, now creating answer');
       }
 
       // FIX 2: CRITICAL - Wait one frame for transceiver config to stabilize
@@ -912,40 +923,60 @@ export const useWebRTCCall = (
             const audioTrack = stream.getAudioTracks()[0];
             const videoTrack = stream.getVideoTracks()[0];
             
-            // Get transceivers created from offer and replace tracks
+            // FIX: Get transceivers and use mid/index to identify kind
+            // receiver.track.kind may be undefined before tracks arrive
             const transceivers = peerConnection.getTransceivers();
-            console.log('[WebRTC] Answerer transceivers:', transceivers.length);
+            console.log('[WebRTC] Answerer transceivers:', transceivers.map(t => ({
+              mid: t.mid,
+              direction: t.direction,
+              senderTrack: t.sender.track?.kind,
+              receiverTrack: t.receiver.track?.kind
+            })));
             
             let audioReplaced = false;
             let videoReplaced = false;
             
-            for (const transceiver of transceivers) {
+            // Transceivers are typically created in order: video (mid=0), audio (mid=1)
+            // But we should check the actual track type when available
+            for (let i = 0; i < transceivers.length; i++) {
+              const transceiver = transceivers[i];
+              
               // Ensure transceiver direction allows sending
-              if (transceiver.direction === 'recvonly') {
+              if (transceiver.direction === 'recvonly' || transceiver.direction === 'inactive') {
                 transceiver.direction = 'sendrecv';
-                console.log('[WebRTC] Changed transceiver direction to sendrecv');
+                console.log('[WebRTC] Changed transceiver direction to sendrecv for mid:', transceiver.mid);
               }
               
-              const kind = transceiver.receiver?.track?.kind;
+              // Use receiver track kind, or fallback to mid-based detection
+              const kind = transceiver.receiver?.track?.kind || 
+                           (transceiver.mid === '0' ? 'video' : transceiver.mid === '1' ? 'audio' : null);
+              
               if (kind === 'audio' && audioTrack && !audioReplaced) {
                 await transceiver.sender.replaceTrack(audioTrack);
                 audioReplaced = true;
-                console.log('[WebRTC] Replaced audio track on transceiver');
+                console.log('[WebRTC] ✅ Replaced audio track on transceiver mid:', transceiver.mid);
               } else if (kind === 'video' && videoTrack && !videoReplaced) {
                 await transceiver.sender.replaceTrack(videoTrack);
                 videoReplaced = true;
-                console.log('[WebRTC] Replaced video track on transceiver');
+                console.log('[WebRTC] ✅ Replaced video track on transceiver mid:', transceiver.mid);
               }
             }
             
-            // Fallback: If transceivers didn't have matching tracks, use addTrack
-            if (!audioReplaced && audioTrack) {
-              peerConnection.addTrack(audioTrack, stream);
-              console.log('[WebRTC] Added audio track via addTrack fallback');
-            }
-            if (!videoReplaced && videoTrack) {
-              peerConnection.addTrack(videoTrack, stream);
-              console.log('[WebRTC] Added video track via addTrack fallback');
+            // If mid-based detection failed, try by index (video first, audio second - standard order)
+            if (!audioReplaced || !videoReplaced) {
+              console.log('[WebRTC] Mid detection incomplete, using index fallback');
+              for (let i = 0; i < transceivers.length && i < 2; i++) {
+                const transceiver = transceivers[i];
+                if (i === 0 && videoTrack && !videoReplaced && !transceiver.sender.track) {
+                  await transceiver.sender.replaceTrack(videoTrack);
+                  videoReplaced = true;
+                  console.log('[WebRTC] ✅ Replaced video track via index fallback');
+                } else if (i === 1 && audioTrack && !audioReplaced && !transceiver.sender.track) {
+                  await transceiver.sender.replaceTrack(audioTrack);
+                  audioReplaced = true;
+                  console.log('[WebRTC] ✅ Replaced audio track via index fallback');
+                }
+              }
             }
             
             console.log('[WebRTC] Answerer tracks configured:', { audioReplaced, videoReplaced });
