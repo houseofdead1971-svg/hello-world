@@ -187,7 +187,7 @@ export const VideoChat = ({
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            muted={true}
+            muted={false}
             className="w-full h-full object-cover bg-black"
             onLoadedMetadata={(e) => {
               const v = e.currentTarget;
