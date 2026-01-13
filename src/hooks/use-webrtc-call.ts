@@ -267,17 +267,23 @@ export const useWebRTCCall = (
   }, [userRole, userId]);
 
   // Initialize peer connection
-  const initializePeerConnection = useCallback(async () => {
+  // Pass isInitiator to control transceiver creation
+  const initializePeerConnection = useCallback(async (forInitiator: boolean = true) => {
     try {
       const configuration = await getIceServers();
       console.log('[WebRTC] Creating peer connection with config:', configuration);
       const peerConnection = new RTCPeerConnection(configuration);
 
-      // FIX 4: Force transceivers (mobile SAFETY FIX)
-      // Mobile browsers sometimes fail without transceivers even when tracks exist
-      peerConnection.addTransceiver('video', { direction: 'sendrecv' });
-      peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-      console.log('[WebRTC] Added transceivers for mobile compatibility');
+      // FIX: Only add transceivers for INITIATOR (caller)
+      // For ANSWERER, transceivers come from the remote offer SDP
+      // Adding transceivers for answerer causes duplicate/mismatched transceivers
+      if (forInitiator) {
+        peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+        peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+        console.log('[WebRTC] Added transceivers for initiator');
+      } else {
+        console.log('[WebRTC] Skipping transceiver creation for answerer (will use offer transceivers)');
+      }
 
       // FIX (PERSISTENT MUTE): Restore mute state when tracks are added
       peerConnection.getSenders().forEach(sender => {
@@ -523,8 +529,8 @@ export const useWebRTCCall = (
         throw new Error('Could not connect to signaling server. Check your internet connection.');
       }
 
-      // Initialize peer connection first
-      const peerConnection = await initializePeerConnection();
+      // Initialize peer connection first (as initiator)
+      const peerConnection = await initializePeerConnection(true);
 
       // Get media stream using ref to prevent duplicate tracks
       if (!localStreamRef.current) {
@@ -878,9 +884,9 @@ export const useWebRTCCall = (
           }
         }
 
-        // Create new peer connection if needed
+        // Create new peer connection if needed (as answerer - no transceivers)
         if (!peerConnection) {
-          peerConnection = await initializePeerConnection();
+          peerConnection = await initializePeerConnection(false);
         }
 
         const offer = new RTCSessionDescription({
@@ -891,16 +897,17 @@ export const useWebRTCCall = (
         await peerConnection.setRemoteDescription(offer);
         console.log('[WebRTC] Set remote offer');
 
-        // FIX: Add local tracks IMMEDIATELY after setting remote description (use ref to prevent duplicates)
-        // This ensures transceivers are properly configured before creating answer
+        // FIX: For answerer, simply use addTrack - transceivers come from offer SDP
+        // The offer already contains transceiver info, addTrack will reuse them
         try {
           if (!localStreamRef.current) {
             const stream = await getMediaStream(true);
             localStreamRef.current = stream;
             setState((prev) => ({ ...prev, localStream: stream }));
             
+            // Simply add tracks - they'll be matched to existing transceivers from offer
             stream.getTracks().forEach((track) => {
-              console.log('[WebRTC] Adding local track after offer:', track.kind);
+              console.log('[WebRTC] Adding local track to answer:', track.kind);
               peerConnection!.addTrack(track, stream);
             });
             console.log('[WebRTC] Local tracks added, ready to create answer');
